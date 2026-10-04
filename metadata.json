@@ -1,0 +1,8 @@
+{
+  "name": "Telegram Web - Real-Time Messenger",
+  "description": "Telegram uslubidagi xavfsiz va tezkor real-time veb-messenjer. Ovozli xabarlar, lichkalar, media almashish va havolalar orqali muloqot.",
+  "requestFramePermissions": [
+    "microphone"
+  ],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
