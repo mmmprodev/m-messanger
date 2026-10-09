@@ -147,10 +147,19 @@ export const api = {
   },
 
   // Media / File Upload
-  async uploadFile(base64Data: string, fileName: string, mimeType: string) {
+  async uploadFile(base64Data: string, fileName: string, mimeType: string, chatId?: string) {
     return request<{ url: string; fileName: string; size: number; mimeType: string }>('/upload', {
       method: 'POST',
-      body: JSON.stringify({ base64Data, fileName, mimeType })
+      body: JSON.stringify({ base64Data, fileName, mimeType, chatId })
     });
+  },
+
+  getMediaUrl(url?: string): string {
+    if (!url) return '';
+    if (url.startsWith('data:') || url.startsWith('blob:') || url.startsWith('http')) return url;
+    const token = getAuthToken();
+    if (!token) return url;
+    const separator = url.includes('?') ? '&' : '?';
+    return `${url}${separator}token=${encodeURIComponent(token)}`;
   }
 };

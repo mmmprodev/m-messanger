@@ -28,6 +28,7 @@ export interface Chat {
 }
 
 export type MessageType = 'text' | 'voice' | 'image' | 'file';
+export type MessageStatus = 'sending' | 'sent' | 'error';
 
 export interface MediaMeta {
   duration?: number; // seconds for voice/audio
@@ -62,6 +63,9 @@ export interface Message {
   isEdited?: boolean;
   createdAt: number;
   readBy: string[]; // user IDs who read it
+  status?: MessageStatus;
+  uploadProgress?: number;
+  localPreviewUrl?: string;
 }
 
 export interface AuthState {

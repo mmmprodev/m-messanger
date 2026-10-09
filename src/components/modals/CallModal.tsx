@@ -54,11 +54,11 @@ export const CallModal: React.FC<CallModalProps> = ({
   };
 
   return (
-    <div className="fixed inset-0 z-50 bg-[#0e1621]/95 backdrop-blur-md flex flex-col items-center justify-between p-8 select-none animate-in fade-in duration-300">
+    <div className="fixed inset-0 z-50 bg-[#090714]/95 backdrop-blur-xl flex flex-col items-center justify-between p-8 select-none animate-in fade-in duration-300">
       {/* Encryption Header */}
       <div className="flex flex-col items-center gap-1.5 text-center">
-        <div className="flex items-center gap-2 text-xs font-medium text-emerald-400 bg-emerald-950/60 px-3 py-1 rounded-full border border-emerald-800/40">
-          <span>🔒 Telegram uchdan-uchga shifrlangan qo'ng'iroq</span>
+        <div className="flex items-center gap-2 text-xs font-semibold text-emerald-400 bg-emerald-950/60 px-3.5 py-1.5 rounded-full border border-emerald-800/40 shadow-sm">
+          <span>🔒 m.messages uchdan-uchga shifrlangan qo'ng'iroq</span>
         </div>
         <p className="text-white/60 text-xs mt-1">🔑 Kalit emojilari: 🍋 ⚡ 🐬 🍓</p>
       </div>

@@ -1,8 +1,7 @@
-import React, { useState } from 'react';
+import React from 'react';
 import { useChat } from '../../context/ChatContext';
 import { useAuth } from '../../context/AuthContext';
 import { Avatar } from '../common/Avatar';
-import { Chat } from '../../types';
 import {
   Menu,
   Search,
@@ -14,7 +13,8 @@ import {
   CheckCheck,
   Mic,
   Image as ImageIcon,
-  FileText
+  FileText,
+  Sparkles
 } from 'lucide-react';
 
 interface SidebarProps {
@@ -53,8 +53,11 @@ export const Sidebar: React.FC<SidebarProps> = ({
     // 2. Search filter
     if (!searchQuery.trim()) return true;
     const q = searchQuery.toLowerCase();
+    const otherUser = (chat as any).otherUser;
+    const searchTarget = chat.type === 'direct' && otherUser ? otherUser.displayName : chat.title;
+
     return (
-      chat.title.toLowerCase().includes(q) ||
+      searchTarget.toLowerCase().includes(q) ||
       (chat.lastMessage && chat.lastMessage.text.toLowerCase().includes(q))
     );
   });
@@ -82,91 +85,104 @@ export const Sidebar: React.FC<SidebarProps> = ({
 
   return (
     <aside
-      className={`w-full md:w-80 lg:w-96 h-full bg-[#17212b] border-r border-white/5 flex flex-col select-none flex-shrink-0 ${
+      className={`w-full md:w-84 lg:w-96 h-full glass-panel border-r flex flex-col select-none flex-shrink-0 z-20 ${
         isMobileChatOpen ? 'hidden md:flex' : 'flex'
       }`}
     >
-      {/* Top Header: Menu, Search, New Chat */}
-      <div className="p-2.5 pb-2 flex items-center gap-2">
-        <button
-          onClick={onOpenMenu}
-          className="p-2 rounded-full text-[#708499] hover:text-white hover:bg-white/10 transition-colors flex-shrink-0"
-          title="Menyu"
-        >
-          <Menu className="w-5 h-5" />
-        </button>
+      {/* Top Brand & Header: Menu, m.messages logo, Search, New Chat */}
+      <div className="p-3 pb-2.5 flex flex-col gap-2.5">
+        <div className="flex items-center justify-between px-1">
+          <div className="flex items-center gap-2.5">
+            <button
+              onClick={onOpenMenu}
+              className="p-2 rounded-2xl text-violet-600 dark:text-violet-300 hover:text-violet-950 dark:hover:text-white hover:bg-violet-600/15 transition-all duration-200"
+              title="Menyu"
+            >
+              <Menu className="w-5 h-5" />
+            </button>
+            <div className="flex items-center gap-2">
+              <div className="w-8 h-8 rounded-xl bg-gradient-to-tr from-violet-600 via-purple-600 to-fuchsia-500 flex items-center justify-center shadow-[0_0_15px_rgba(168,85,247,0.4)]">
+                <span className="text-white text-xs font-black tracking-tight">m.</span>
+              </div>
+              <span className="text-base font-black tracking-tight bg-gradient-to-r from-violet-700 via-purple-800 to-fuchsia-700 dark:from-violet-100 dark:via-white dark:to-purple-200 bg-clip-text text-transparent">
+                m.messages
+              </span>
+            </div>
+          </div>
 
-        <div className="flex-1 relative">
-          <Search className="absolute left-3 top-2.5 w-4 h-4 text-[#708499]" />
+          <button
+            onClick={onOpenNewChat}
+            className="p-2.5 rounded-2xl text-violet-600 dark:text-violet-200 bg-violet-600/10 dark:bg-violet-600/20 hover:bg-violet-600/25 border border-violet-500/20 transition-all duration-200 shadow-xs"
+            title="Yangi suhbat"
+          >
+            <Edit3 className="w-4 h-4" />
+          </button>
+        </div>
+
+        {/* Search bar */}
+        <div className="relative">
+          <Search className="absolute left-3.5 top-2.5 w-4 h-4 text-violet-400" />
           <input
             type="text"
             value={searchQuery}
             onChange={e => setSearchQuery(e.target.value)}
-            placeholder="Qidiruv..."
-            className="w-full bg-[#0e1621] border border-transparent rounded-full py-2 pl-9 pr-8 text-xs text-white placeholder-[#708499] focus:outline-none focus:border-[#2481cc]/60 transition-colors"
+            placeholder="Suhbatlar yoki xabarlarni qidirish..."
+            className="w-full glass-input rounded-2xl py-2 pl-10 pr-8 text-xs text-slate-900 dark:text-white placeholder-violet-400/60 focus:outline-none focus:border-violet-500 focus:ring-1 focus:ring-violet-500/30 transition-all"
           />
           {searchQuery && (
             <button
               onClick={() => setSearchQuery('')}
-              className="absolute right-2.5 top-2.5 text-[#708499] hover:text-white"
+              className="absolute right-3 top-2.5 text-violet-400 hover:text-violet-600 dark:hover:text-white"
             >
-              <X className="w-4 h-4" />
+              <X className="w-3.5 h-3.5" />
             </button>
           )}
         </div>
-
-        <button
-          onClick={onOpenNewChat}
-          className="p-2 rounded-full text-[#65aadd] hover:text-white hover:bg-[#2481cc]/20 transition-colors flex-shrink-0"
-          title="Yangi xabar / guruh"
-        >
-          <Edit3 className="w-5 h-5" />
-        </button>
       </div>
 
-      {/* Tabs Filter Bar (Telegram Folders) */}
-      <div className="flex items-center px-2 border-b border-white/5 overflow-x-auto no-scrollbar">
+      {/* Tabs Filter Bar (m.messages folders) */}
+      <div className="flex items-center gap-1.5 px-3 py-1.5 border-b border-violet-500/10 overflow-x-auto no-scrollbar">
         <button
           onClick={() => setActiveTab('all')}
-          className={`py-2 px-3 text-xs font-medium border-b-2 whitespace-nowrap transition-all ${
+          className={`py-1.5 px-3.5 text-xs font-bold rounded-xl transition-all ${
             activeTab === 'all'
-              ? 'border-[#2481cc] text-[#65aadd]'
-              : 'border-transparent text-[#708499] hover:text-white'
+              ? 'bg-gradient-to-r from-violet-600 to-purple-600 text-white shadow-sm glow-primary'
+              : 'text-violet-600/70 dark:text-violet-300/70 hover:text-violet-950 dark:hover:text-white hover:bg-violet-500/10'
           }`}
         >
           Barchasi
         </button>
         <button
           onClick={() => setActiveTab('personal')}
-          className={`py-2 px-3 text-xs font-medium border-b-2 whitespace-nowrap transition-all ${
+          className={`py-1.5 px-3.5 text-xs font-bold rounded-xl transition-all ${
             activeTab === 'personal'
-              ? 'border-[#2481cc] text-[#65aadd]'
-              : 'border-transparent text-[#708499] hover:text-white'
+              ? 'bg-gradient-to-r from-violet-600 to-purple-600 text-white shadow-sm glow-primary'
+              : 'text-violet-600/70 dark:text-violet-300/70 hover:text-violet-950 dark:hover:text-white hover:bg-violet-500/10'
           }`}
         >
-          Shaxsiy
+          Lichka
         </button>
         <button
           onClick={() => setActiveTab('groups')}
-          className={`py-2 px-3 text-xs font-medium border-b-2 whitespace-nowrap transition-all ${
+          className={`py-1.5 px-3.5 text-xs font-bold rounded-xl transition-all ${
             activeTab === 'groups'
-              ? 'border-[#2481cc] text-[#65aadd]'
-              : 'border-transparent text-[#708499] hover:text-white'
+              ? 'bg-gradient-to-r from-violet-600 to-purple-600 text-white shadow-sm glow-primary'
+              : 'text-violet-600/70 dark:text-violet-300/70 hover:text-violet-950 dark:hover:text-white hover:bg-violet-500/10'
           }`}
         >
           Guruhlar
         </button>
         <button
           onClick={() => setActiveTab('unread')}
-          className={`py-2 px-3 text-xs font-medium border-b-2 whitespace-nowrap flex items-center gap-1.5 transition-all ${
+          className={`py-1.5 px-3.5 text-xs font-bold rounded-xl flex items-center gap-1.5 transition-all ${
             activeTab === 'unread'
-              ? 'border-[#2481cc] text-[#65aadd]'
-              : 'border-transparent text-[#708499] hover:text-white'
+              ? 'bg-gradient-to-r from-violet-600 to-purple-600 text-white shadow-sm glow-primary'
+              : 'text-violet-600/70 dark:text-violet-300/70 hover:text-violet-950 dark:hover:text-white hover:bg-violet-500/10'
           }`}
         >
           <span>O'qilmagan</span>
           {totalUnread > 0 && (
-            <span className="px-1.5 py-0.2 bg-[#2481cc] text-white text-[10px] font-bold rounded-full">
+            <span className="px-1.5 py-0.2 bg-fuchsia-500 text-white text-[10px] font-black rounded-full shadow-xs">
               {totalUnread}
             </span>
           )}
@@ -174,20 +190,20 @@ export const Sidebar: React.FC<SidebarProps> = ({
       </div>
 
       {/* Chats List */}
-      <div className="flex-1 overflow-y-auto divide-y divide-white/[0.03]">
+      <div className="flex-1 overflow-y-auto p-2 space-y-1">
         {isLoadingChats ? (
-          <div className="p-8 text-center text-xs text-[#708499]">Chatlar yuklanmoqda...</div>
+          <div className="p-8 text-center text-xs text-violet-400 animate-pulse">Suhbatlar yuklanmoqda...</div>
         ) : filteredChats.length === 0 ? (
-          <div className="p-8 text-center text-xs text-[#708499] flex flex-col items-center gap-3">
-            <div className="w-12 h-12 rounded-full bg-white/5 flex items-center justify-center text-[#708499]">
+          <div className="p-8 text-center text-xs text-violet-500 dark:text-violet-300/70 flex flex-col items-center gap-3">
+            <div className="w-12 h-12 rounded-2xl bg-violet-600/10 border border-violet-500/20 flex items-center justify-center text-violet-400">
               <Users className="w-6 h-6" />
             </div>
-            <span>Hech qanday chat topilmadi</span>
+            <span>Hech qanday suhbat topilmadi</span>
             <button
               onClick={onOpenNewChat}
-              className="text-xs text-[#65aadd] hover:underline"
+              className="text-xs text-violet-500 dark:text-violet-400 hover:underline font-bold"
             >
-              Yangi chat boshlash +
+              Yangi lichka boshlash +
             </button>
           </div>
         ) : (
@@ -195,6 +211,12 @@ export const Sidebar: React.FC<SidebarProps> = ({
             const isActive = chat.id === activeChatId;
             const isDirect = chat.type === 'direct';
             const otherUser = (chat as any).otherUser;
+
+            // GUARANTEE: For direct chat, ALWAYS show the other user's name and details
+            const displayTitle = isDirect && otherUser ? otherUser.displayName : chat.title;
+            const displayAvatar = isDirect && otherUser ? otherUser.avatar : chat.avatar;
+            const displayColor = isDirect && otherUser ? otherUser.avatarColor : (chat.avatarColor || '#8b5cf6');
+
             const userStatus = otherUser ? userStatusMap[otherUser.id] : undefined;
             const isOnline = userStatus ? userStatus.isOnline : otherUser?.isOnline;
 
@@ -207,17 +229,17 @@ export const Sidebar: React.FC<SidebarProps> = ({
               <div
                 key={chat.id}
                 onClick={() => setActiveChatId(chat.id)}
-                className={`flex items-center gap-3 px-3 py-2.5 cursor-pointer transition-colors ${
+                className={`flex items-center gap-3 p-2.5 rounded-2xl cursor-pointer transition-all duration-200 ${
                   isActive
-                    ? 'bg-[#2b5278]'
-                    : 'hover:bg-[#202b36]'
+                    ? 'bg-gradient-to-r from-violet-600/30 to-purple-600/20 dark:from-violet-600/35 dark:to-purple-600/20 border border-violet-500/35 shadow-[0_4px_16px_rgba(139,92,246,0.18)]'
+                    : 'hover:bg-violet-600/10 border border-transparent'
                 }`}
               >
                 {/* Avatar */}
                 <Avatar
-                  name={chat.title}
-                  avatarUrl={chat.avatar}
-                  color={chat.avatarColor || '#65aadd'}
+                  name={displayTitle}
+                  avatarUrl={displayAvatar}
+                  color={displayColor}
                   size="md"
                   isOnline={isDirect ? isOnline : undefined}
                 />
@@ -227,21 +249,21 @@ export const Sidebar: React.FC<SidebarProps> = ({
                   <div className="flex items-center justify-between mb-0.5">
                     <div className="flex items-center gap-1.5 truncate">
                       {chat.type === 'saved' && (
-                        <Bookmark className="w-3.5 h-3.5 text-[#65aadd] flex-shrink-0" />
+                        <Bookmark className="w-3.5 h-3.5 text-violet-400 flex-shrink-0" />
                       )}
-                      <h4 className="text-sm font-semibold text-white truncate">
-                        {chat.title}
+                      <h4 className="text-sm font-bold text-slate-900 dark:text-white truncate">
+                        {displayTitle}
                       </h4>
                     </div>
-                    <span className={`text-[11px] flex-shrink-0 ml-1.5 ${isActive ? 'text-white/80' : 'text-[#708499]'}`}>
+                    <span className={`text-[11px] font-mono flex-shrink-0 ml-1.5 ${isActive ? 'text-violet-600 dark:text-violet-200' : 'text-violet-400 dark:text-violet-400/60'}`}>
                       {formatMessageTime(lastMsg?.createdAt || chat.updatedAt)}
                     </span>
                   </div>
 
                   <div className="flex items-center justify-between">
-                    <div className={`text-xs truncate flex items-center gap-1 ${isActive ? 'text-white/90' : 'text-[#708499]'}`}>
+                    <div className={`text-xs truncate flex items-center gap-1 ${isActive ? 'text-violet-900 dark:text-violet-100' : 'text-slate-600 dark:text-violet-300/70'}`}>
                       {isTyping ? (
-                        <span className="text-[#65aadd] font-medium animate-pulse flex items-center gap-1">
+                        <span className="text-fuchsia-500 dark:text-fuchsia-400 font-bold animate-pulse flex items-center gap-1">
                           yozmoqda...
                         </span>
                       ) : lastMsg ? (
@@ -249,25 +271,25 @@ export const Sidebar: React.FC<SidebarProps> = ({
                           {isOutgoing && (
                             <span className="inline-flex items-center mr-0.5">
                               {isRead ? (
-                                <CheckCheck className="w-3.5 h-3.5 text-[#65aadd]" />
+                                <CheckCheck className="w-3.5 h-3.5 text-violet-500 dark:text-violet-400" />
                               ) : (
-                                <Check className="w-3.5 h-3.5 opacity-70" />
+                                <Check className="w-3.5 h-3.5 opacity-60" />
                               )}
                             </span>
                           )}
                           {lastMsg.type === 'voice' && (
-                            <span className="flex items-center gap-1 text-[#65aadd]">
+                            <span className="flex items-center gap-1 text-fuchsia-600 dark:text-fuchsia-300 font-semibold">
                               <Mic className="w-3.5 h-3.5" /> Ovozli xabar
                             </span>
                           )}
                           {lastMsg.type === 'image' && (
-                            <span className="flex items-center gap-1 text-[#65aadd]">
+                            <span className="flex items-center gap-1 text-fuchsia-600 dark:text-fuchsia-300 font-semibold">
                               <ImageIcon className="w-3.5 h-3.5" /> Rasm
                             </span>
                           )}
                           {lastMsg.type === 'file' && (
-                            <span className="flex items-center gap-1 text-[#65aadd]">
-                              <FileText className="w-3.5 h-3.5" /> {lastMsg.text || 'Hujjat'}
+                            <span className="flex items-center gap-1 text-fuchsia-600 dark:text-fuchsia-300 font-semibold">
+                              <FileText className="w-3.5 h-3.5" /> {lastMsg.text || 'Fayl'}
                             </span>
                           )}
                           {lastMsg.type === 'text' && (
@@ -281,7 +303,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
 
                     {/* Unread badge */}
                     {chat.unreadCount !== undefined && chat.unreadCount > 0 && (
-                      <span className="ml-2 px-1.5 py-0.5 bg-[#2481cc] text-white text-[11px] font-bold rounded-full min-w-[20px] text-center flex-shrink-0 shadow-sm">
+                      <span className="ml-2 px-2 py-0.5 bg-gradient-to-r from-violet-600 to-fuchsia-600 text-white text-[11px] font-bold rounded-full min-w-[20px] text-center flex-shrink-0 shadow-md">
                         {chat.unreadCount}
                       </span>
                     )}

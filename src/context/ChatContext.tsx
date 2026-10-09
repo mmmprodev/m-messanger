@@ -1,8 +1,40 @@
 import React, { createContext, useContext, useState, useEffect, useCallback, useRef } from 'react';
-import { Chat, Message, User, ReplyInfo, MediaMeta } from '../types';
+import { Chat, Message, User, ReplyInfo, MediaMeta, MessageType, MessageStatus } from '../types';
 import { api } from '../services/api';
 import { socket } from '../services/socket';
 import { useAuth } from './AuthContext';
+
+function playNotificationSound(type: 'sent' | 'received') {
+  try {
+    const AudioCtx = window.AudioContext || (window as any).webkitAudioContext;
+    if (!AudioCtx) return;
+    const ctx = new AudioCtx();
+    const osc = ctx.createOscillator();
+    const gain = ctx.createGain();
+    osc.connect(gain);
+    gain.connect(ctx.destination);
+
+    if (type === 'sent') {
+      osc.type = 'sine';
+      osc.frequency.setValueAtTime(440, ctx.currentTime);
+      osc.frequency.exponentialRampToValueAtTime(880, ctx.currentTime + 0.08);
+      gain.gain.setValueAtTime(0.08, ctx.currentTime);
+      gain.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + 0.1);
+      osc.start();
+      osc.stop(ctx.currentTime + 0.1);
+    } else {
+      osc.type = 'sine';
+      osc.frequency.setValueAtTime(587.33, ctx.currentTime);
+      osc.frequency.setValueAtTime(880, ctx.currentTime + 0.08);
+      gain.gain.setValueAtTime(0.12, ctx.currentTime);
+      gain.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + 0.22);
+      osc.start();
+      osc.stop(ctx.currentTime + 0.22);
+    }
+  } catch (e) {
+    // Ignore audio autoplay restrictions
+  }
+}
 
 interface TypingStatus {
   chatId: string;
@@ -30,6 +62,7 @@ interface ChatContextType {
   sendMessage: (text: string) => Promise<void>;
   sendVoiceMessage: (blob: Blob, duration: number, waveform: number[]) => Promise<void>;
   sendMediaMessage: (file: File) => Promise<void>;
+  retrySendMessage: (messageId: string) => Promise<void>;
   editMessage: (messageId: string, text: string) => Promise<void>;
   deleteMessage: (messageId: string) => Promise<void>;
   toggleReaction: (messageId: string, emoji: string) => Promise<void>;
@@ -42,6 +75,21 @@ interface ChatContextType {
 }
 
 const ChatContext = createContext<ChatContextType | undefined>(undefined);
+
+function resolveChatForClient(chat: Chat, currentUserId?: string): Chat {
+  if (chat.type !== 'direct' || !currentUserId) return chat;
+  const otherUser = (chat as any).otherUser;
+
+  if (otherUser) {
+    return {
+      ...chat,
+      title: otherUser.displayName || 'Foydalanuvchi',
+      avatar: otherUser.avatar,
+      avatarColor: otherUser.avatarColor || chat.avatarColor || '#8b5cf6'
+    };
+  }
+  return chat;
+}
 
 export const ChatProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   const { user, isAuthenticated } = useAuth();
@@ -63,11 +111,11 @@ export const ChatProvider: React.FC<{ children: React.ReactNode }> = ({ children
     if (!isAuthenticated) return;
     try {
       const res = await api.getChats();
-      setChats(res.chats);
+      setChats(res.chats.map(c => resolveChatForClient(c, user?.id)));
     } catch (err) {
       console.error('Failed to load chats:', err);
     }
-  }, [isAuthenticated]);
+  }, [isAuthenticated, user?.id]);
 
   useEffect(() => {
     if (isAuthenticated) {
@@ -135,11 +183,33 @@ export const ChatProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
     // 1. New message
     const unsubNewMsg = socket.on('message:new', (newMsg: Message) => {
+      // Play sound
+      if (user && newMsg.senderId !== user.id) {
+        playNotificationSound('received');
+      }
+
       // If message is in currently open chat
       if (newMsg.chatId === activeChatId) {
         setMessages(prev => {
-          if (prev.some(m => m.id === newMsg.id)) return prev;
-          return [...prev, newMsg];
+          if (prev.some(m => m.id === newMsg.id)) {
+            return prev.map(m => m.id === newMsg.id ? { ...newMsg, status: 'sent' } : m);
+          }
+
+          // If current user sent it, reconcile with any pending optimistic message
+          if (user && newMsg.senderId === user.id) {
+            const tempIdx = prev.findIndex(m =>
+              m.id.startsWith('temp_') &&
+              m.type === newMsg.type &&
+              (newMsg.type === 'text' ? m.text === newMsg.text : true)
+            );
+            if (tempIdx !== -1) {
+              const updated = [...prev];
+              updated[tempIdx] = { ...newMsg, status: 'sent' };
+              return updated;
+            }
+          }
+
+          return [...prev, { ...newMsg, status: 'sent' }];
         });
         // Mark message as read
         if (user && newMsg.senderId !== user.id) {
@@ -162,7 +232,7 @@ export const ChatProvider: React.FC<{ children: React.ReactNode }> = ({ children
             const newUnread = isCurrentChat ? 0 : (c.unreadCount || 0) + (isFromOther ? 1 : 0);
             return {
               ...c,
-              lastMessage: newMsg,
+              lastMessage: { ...newMsg, status: 'sent' as MessageStatus },
               updatedAt: newMsg.createdAt,
               unreadCount: newUnread
             };
@@ -238,9 +308,10 @@ export const ChatProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
     // 8. New chat added
     const unsubNewChat = socket.on('chat:new', (newChat: Chat) => {
+      const resolved = resolveChatForClient(newChat, user?.id);
       setChats(prev => {
-        if (prev.some(c => c.id === newChat.id)) return prev;
-        return [newChat, ...prev];
+        if (prev.some(c => c.id === resolved.id)) return prev;
+        return [resolved, ...prev];
       });
     });
 
@@ -262,9 +333,10 @@ export const ChatProvider: React.FC<{ children: React.ReactNode }> = ({ children
     };
   }, [isAuthenticated, activeChatId, user, refreshChats]);
 
-  // Send regular text message
+  // Send regular text message with INSTANT optimistic UI
   const sendMessage = async (text: string) => {
-    if (!activeChatId || !text.trim()) return;
+    const trimmed = text.trim();
+    if (!activeChatId || !trimmed || !user) return;
 
     let replyToData: ReplyInfo | undefined = undefined;
     if (replyingTo) {
@@ -276,93 +348,303 @@ export const ChatProvider: React.FC<{ children: React.ReactNode }> = ({ children
       };
     }
 
+    const tempId = `temp_msg_${Date.now()}_${Math.random().toString(36).slice(2, 7)}`;
+    const optimisticMsg: Message = {
+      id: tempId,
+      chatId: activeChatId,
+      senderId: user.id,
+      senderName: user.displayName,
+      senderAvatar: user.avatar,
+      senderColor: user.avatarColor,
+      text: trimmed,
+      type: 'text',
+      replyTo: replyToData,
+      reactions: {},
+      createdAt: Date.now(),
+      readBy: [user.id],
+      status: 'sending'
+    };
+
+    // 1. Immediately drop message into chat
+    setMessages(prev => [...prev, optimisticMsg]);
+    setReplyingTo(null);
+
+    // 2. Immediately update sidebar chat preview
+    setChats(prev => prev.map(c => {
+      if (c.id === activeChatId) {
+        return {
+          ...c,
+          lastMessage: optimisticMsg,
+          updatedAt: optimisticMsg.createdAt
+        };
+      }
+      return c;
+    }).sort((a, b) => (b.lastMessage?.createdAt || b.updatedAt) - (a.lastMessage?.createdAt || a.updatedAt)));
+
     try {
-      await api.sendMessage(activeChatId, {
-        text: text.trim(),
+      const res = await api.sendMessage(activeChatId, {
+        text: trimmed,
         type: 'text',
         replyTo: replyToData
       });
-      setReplyingTo(null);
+
+      playNotificationSound('sent');
+
+      setMessages(prev => {
+        if (prev.some(m => m.id === res.message.id)) {
+          return prev.filter(m => m.id !== tempId);
+        }
+        return prev.map(m => m.id === tempId ? { ...res.message, status: 'sent' } : m);
+      });
+
+      setChats(prev => prev.map(c => {
+        if (c.id === activeChatId && c.lastMessage?.id === tempId) {
+          return { ...c, lastMessage: { ...res.message, status: 'sent' as MessageStatus } };
+        }
+        return c;
+      }));
     } catch (err) {
       console.error('Failed to send message:', err);
+      setMessages(prev => prev.map(m => m.id === tempId ? { ...m, status: 'error' } : m));
     }
   };
 
-  // Send voice message
+  // Send voice message with INSTANT waveform & audio bubble + sending state
   const sendVoiceMessage = async (blob: Blob, duration: number, waveform: number[]) => {
-    if (!activeChatId) return;
+    if (!activeChatId || !user) return;
 
-    // Convert blob to base64
+    let replyToData: ReplyInfo | undefined = undefined;
+    if (replyingTo) {
+      replyToData = {
+        id: replyingTo.id,
+        senderName: replyingTo.senderName || 'Foydalanuvchi',
+        text: replyingTo.text || 'Xabar',
+        type: replyingTo.type
+      };
+    }
+
+    const localBlobUrl = URL.createObjectURL(blob);
+    const tempId = `temp_voice_${Date.now()}_${Math.random().toString(36).slice(2, 7)}`;
+    const roundedDuration = Math.max(1, Math.round(duration));
+    const safeWaveform = waveform && waveform.length > 0 ? waveform : [30, 60, 45, 80, 50, 90, 70, 40, 85, 60, 30];
+
+    const optimisticMsg: Message = {
+      id: tempId,
+      chatId: activeChatId,
+      senderId: user.id,
+      senderName: user.displayName,
+      senderAvatar: user.avatar,
+      senderColor: user.avatarColor,
+      text: '',
+      type: 'voice',
+      mediaUrl: localBlobUrl,
+      mediaMeta: {
+        duration: roundedDuration,
+        waveform: safeWaveform,
+        size: blob.size,
+        mimeType: blob.type || 'audio/webm'
+      },
+      replyTo: replyToData,
+      reactions: {},
+      createdAt: Date.now(),
+      readBy: [user.id],
+      status: 'sending'
+    };
+
+    // 1. Drop into chat immediately
+    setMessages(prev => [...prev, optimisticMsg]);
+    setReplyingTo(null);
+
+    // 2. Update sidebar chat preview
+    setChats(prev => prev.map(c => {
+      if (c.id === activeChatId) {
+        return {
+          ...c,
+          lastMessage: optimisticMsg,
+          updatedAt: optimisticMsg.createdAt
+        };
+      }
+      return c;
+    }).sort((a, b) => (b.lastMessage?.createdAt || b.updatedAt) - (a.lastMessage?.createdAt || a.updatedAt)));
+
+    // 3. Process upload in background
     const reader = new FileReader();
     reader.readAsDataURL(blob);
     reader.onloadend = async () => {
       const base64Data = reader.result as string;
+      const mime = blob.type || 'audio/webm';
+      let ext = 'webm';
+      if (mime.includes('mp4') || mime.includes('m4a') || mime.includes('aac')) ext = 'mp4';
+      else if (mime.includes('ogg')) ext = 'ogg';
+      else if (mime.includes('wav')) ext = 'wav';
+
       try {
-        const uploadRes = await api.uploadFile(base64Data, `voice_${Date.now()}.webm`, 'audio/webm');
+        const uploadRes = await api.uploadFile(base64Data, `voice_${Date.now()}.${ext}`, mime, activeChatId);
         const mediaMeta: MediaMeta = {
-          duration: Math.round(duration),
-          waveform,
+          duration: roundedDuration,
+          waveform: safeWaveform,
           size: uploadRes.size,
           mimeType: uploadRes.mimeType
         };
 
-        await api.sendMessage(activeChatId, {
+        const res = await api.sendMessage(activeChatId, {
           text: '',
           type: 'voice',
           mediaUrl: uploadRes.url,
           mediaMeta,
-          replyTo: replyingTo ? {
-            id: replyingTo.id,
-            senderName: replyingTo.senderName || 'Foydalanuvchi',
-            text: replyingTo.text || 'Xabar',
-            type: replyingTo.type
-          } : undefined
+          replyTo: replyToData
         });
 
-        setReplyingTo(null);
+        playNotificationSound('sent');
+
+        setMessages(prev => {
+          if (prev.some(m => m.id === res.message.id)) {
+            return prev.filter(m => m.id !== tempId);
+          }
+          return prev.map(m => m.id === tempId ? { ...res.message, status: 'sent' } : m);
+        });
+
+        setChats(prev => prev.map(c => {
+          if (c.id === activeChatId && c.lastMessage?.id === tempId) {
+            return { ...c, lastMessage: { ...res.message, status: 'sent' as MessageStatus } };
+          }
+          return c;
+        }));
       } catch (err) {
         console.error('Voice send failed:', err);
+        setMessages(prev => prev.map(m => m.id === tempId ? { ...m, status: 'error' } : m));
       }
+    };
+    reader.onerror = () => {
+      setMessages(prev => prev.map(m => m.id === tempId ? { ...m, status: 'error' } : m));
     };
   };
 
-  // Send media/document file
+  // Send media/document file with INSTANT preview and sending status
   const sendMediaMessage = async (file: File) => {
-    if (!activeChatId) return;
+    if (!activeChatId || !user) return;
 
+    let replyToData: ReplyInfo | undefined = undefined;
+    if (replyingTo) {
+      replyToData = {
+        id: replyingTo.id,
+        senderName: replyingTo.senderName || 'Foydalanuvchi',
+        text: replyingTo.text || 'Xabar',
+        type: replyingTo.type
+      };
+    }
+
+    const isImage = file.type.startsWith('image/');
+    const msgType: MessageType = isImage ? 'image' : 'file';
+    const localUrl = URL.createObjectURL(file);
+    const tempId = `temp_media_${Date.now()}_${Math.random().toString(36).slice(2, 7)}`;
+
+    const optimisticMsg: Message = {
+      id: tempId,
+      chatId: activeChatId,
+      senderId: user.id,
+      senderName: user.displayName,
+      senderAvatar: user.avatar,
+      senderColor: user.avatarColor,
+      text: isImage ? '' : file.name,
+      type: msgType,
+      mediaUrl: localUrl,
+      mediaMeta: {
+        size: file.size,
+        name: file.name,
+        mimeType: file.type
+      },
+      replyTo: replyToData,
+      reactions: {},
+      createdAt: Date.now(),
+      readBy: [user.id],
+      status: 'sending'
+    };
+
+    // 1. Drop into chat immediately
+    setMessages(prev => [...prev, optimisticMsg]);
+    setReplyingTo(null);
+
+    // 2. Update sidebar chat preview
+    setChats(prev => prev.map(c => {
+      if (c.id === activeChatId) {
+        return {
+          ...c,
+          lastMessage: optimisticMsg,
+          updatedAt: optimisticMsg.createdAt
+        };
+      }
+      return c;
+    }).sort((a, b) => (b.lastMessage?.createdAt || b.updatedAt) - (a.lastMessage?.createdAt || a.updatedAt)));
+
+    // 3. Process upload in background
     const reader = new FileReader();
     reader.readAsDataURL(file);
     reader.onloadend = async () => {
       const base64Data = reader.result as string;
-      const isImage = file.type.startsWith('image/');
-      const msgType = isImage ? 'image' : 'file';
 
       try {
-        const uploadRes = await api.uploadFile(base64Data, file.name, file.type);
+        const uploadRes = await api.uploadFile(base64Data, file.name, file.type, activeChatId);
         const mediaMeta: MediaMeta = {
           size: file.size,
           name: file.name,
           mimeType: file.type
         };
 
-        await api.sendMessage(activeChatId, {
+        const res = await api.sendMessage(activeChatId, {
           text: isImage ? '' : file.name,
           type: msgType,
           mediaUrl: uploadRes.url,
           mediaMeta,
-          replyTo: replyingTo ? {
-            id: replyingTo.id,
-            senderName: replyingTo.senderName || 'Foydalanuvchi',
-            text: replyingTo.text || 'Xabar',
-            type: replyingTo.type
-          } : undefined
+          replyTo: replyToData
         });
 
-        setReplyingTo(null);
+        playNotificationSound('sent');
+
+        setMessages(prev => {
+          if (prev.some(m => m.id === res.message.id)) {
+            return prev.filter(m => m.id !== tempId);
+          }
+          return prev.map(m => m.id === tempId ? { ...res.message, status: 'sent' } : m);
+        });
+
+        setChats(prev => prev.map(c => {
+          if (c.id === activeChatId && c.lastMessage?.id === tempId) {
+            return { ...c, lastMessage: { ...res.message, status: 'sent' as MessageStatus } };
+          }
+          return c;
+        }));
       } catch (err) {
         console.error('File send failed:', err);
+        setMessages(prev => prev.map(m => m.id === tempId ? { ...m, status: 'error' } : m));
       }
     };
+    reader.onerror = () => {
+      setMessages(prev => prev.map(m => m.id === tempId ? { ...m, status: 'error' } : m));
+    };
+  };
+
+  // Retry sending an error message
+  const retrySendMessage = async (messageId: string) => {
+    const failedMsg = messages.find(m => m.id === messageId);
+    if (!failedMsg || !activeChatId) return;
+
+    setMessages(prev => prev.map(m => m.id === messageId ? { ...m, status: 'sending' } : m));
+
+    try {
+      const res = await api.sendMessage(activeChatId, {
+        text: failedMsg.text,
+        type: failedMsg.type,
+        mediaUrl: failedMsg.mediaUrl,
+        mediaMeta: failedMsg.mediaMeta,
+        replyTo: failedMsg.replyTo
+      });
+      playNotificationSound('sent');
+      setMessages(prev => prev.map(m => m.id === messageId ? { ...res.message, status: 'sent' } : m));
+    } catch (err) {
+      console.error('Retry failed:', err);
+      setMessages(prev => prev.map(m => m.id === messageId ? { ...m, status: 'error' } : m));
+    }
   };
 
   const editMessage = async (messageId: string, text: string) => {
@@ -401,8 +683,9 @@ export const ChatProvider: React.FC<{ children: React.ReactNode }> = ({ children
   const createDirectChat = async (targetUserId: string): Promise<Chat> => {
     const res = await api.createDirectChat(targetUserId);
     await refreshChats();
-    setActiveChatId(res.chat.id);
-    return res.chat;
+    const resolved = resolveChatForClient(res.chat, user?.id);
+    setActiveChatId(resolved.id);
+    return resolved;
   };
 
   const createGroupChat = async (title: string, participantIds: string[]): Promise<Chat> => {
@@ -455,6 +738,7 @@ export const ChatProvider: React.FC<{ children: React.ReactNode }> = ({ children
         sendMessage,
         sendVoiceMessage,
         sendMediaMessage,
+        retrySendMessage,
         editMessage,
         deleteMessage,
         toggleReaction,

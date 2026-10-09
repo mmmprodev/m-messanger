@@ -13,7 +13,7 @@ import {
   X,
   Check,
   Shield,
-  HelpCircle
+  Sparkles
 } from 'lucide-react';
 
 interface SideMenuDrawerProps {
@@ -57,18 +57,18 @@ export const SideMenuDrawer: React.FC<SideMenuDrawerProps> = ({
 
   return (
     <div
-      className="fixed inset-0 z-50 bg-black/60 backdrop-blur-xs flex select-none animate-in fade-in"
+      className="fixed inset-0 z-50 bg-black/70 backdrop-blur-md flex select-none animate-in fade-in"
       onClick={onClose}
     >
       <div
-        className="w-72 sm:w-80 h-full bg-[#17212b] shadow-2xl flex flex-col animate-in slide-in-from-left duration-250 border-r border-white/5"
+        className="w-72 sm:w-80 h-full bg-[#120c24]/95 border-r border-violet-500/20 shadow-2xl flex flex-col animate-in slide-in-from-left duration-250 backdrop-blur-2xl"
         onClick={e => e.stopPropagation()}
       >
         {/* User Banner Header */}
-        <div className="p-5 bg-gradient-to-b from-[#2481cc]/20 to-[#17212b] border-b border-white/5 relative">
+        <div className="p-6 bg-gradient-to-b from-violet-900/30 via-purple-900/20 to-transparent border-b border-violet-500/15 relative">
           <button
             onClick={onClose}
-            className="absolute top-4 right-4 p-1 rounded-full text-[#708499] hover:text-white transition-colors"
+            className="absolute top-4 right-4 p-1.5 rounded-xl text-violet-300 hover:text-white hover:bg-violet-600/20 transition-colors"
           >
             <X className="w-5 h-5" />
           </button>
@@ -78,13 +78,13 @@ export const SideMenuDrawer: React.FC<SideMenuDrawerProps> = ({
             avatarUrl={user.avatar}
             color={user.avatarColor}
             size="lg"
-            className="mb-3 ring-2 ring-[#2481cc]/40"
+            className="mb-3.5 ring-2 ring-violet-500/40 shadow-lg"
           />
 
-          <h3 className="text-base font-bold text-white truncate">{user.displayName}</h3>
-          <p className="text-xs text-[#65aadd] font-mono mt-0.5">@{user.username}</p>
+          <h3 className="text-base font-extrabold text-white truncate">{user.displayName}</h3>
+          <p className="text-xs text-violet-300 font-mono mt-0.5">@{user.username}</p>
           {user.bio && (
-            <p className="text-[11px] text-[#708499] mt-2 line-clamp-2 leading-relaxed">
+            <p className="text-[11px] text-violet-300/70 mt-2 line-clamp-2 leading-relaxed">
               {user.bio}
             </p>
           )}
@@ -94,10 +94,10 @@ export const SideMenuDrawer: React.FC<SideMenuDrawerProps> = ({
         <div className="flex-1 overflow-y-auto py-3 px-2 space-y-1 text-sm text-white">
           <button
             onClick={handleOpenSavedMessages}
-            className="w-full flex items-center gap-3.5 px-3.5 py-2.5 rounded-xl hover:bg-[#202b36] transition-colors text-left"
+            className="w-full flex items-center gap-3.5 px-3.5 py-2.5 rounded-2xl hover:bg-violet-600/15 transition-all text-left"
           >
-            <Bookmark className="w-5 h-5 text-[#65aadd]" />
-            <span className="font-medium">Saqlangan xabarlar</span>
+            <Bookmark className="w-5 h-5 text-violet-400" />
+            <span className="font-semibold text-xs text-violet-100">Saqlangan xabarlar</span>
           </button>
 
           <button
@@ -105,33 +105,35 @@ export const SideMenuDrawer: React.FC<SideMenuDrawerProps> = ({
               onOpenNewChat();
               onClose();
             }}
-            className="w-full flex items-center gap-3.5 px-3.5 py-2.5 rounded-xl hover:bg-[#202b36] transition-colors text-left"
+            className="w-full flex items-center gap-3.5 px-3.5 py-2.5 rounded-2xl hover:bg-violet-600/15 transition-all text-left"
           >
-            <Users className="w-5 h-5 text-[#7bc862]" />
-            <span className="font-medium">Yangi guruh</span>
+            <Users className="w-5 h-5 text-fuchsia-400" />
+            <span className="font-semibold text-xs text-violet-100">Yangi guruh ochish</span>
           </button>
 
           <button
             onClick={handleCopyInviteLink}
-            className="w-full flex items-center justify-between px-3.5 py-2.5 rounded-xl hover:bg-[#202b36] transition-colors text-left"
+            className="w-full flex items-center justify-between px-3.5 py-2.5 rounded-2xl hover:bg-violet-600/15 transition-all text-left"
           >
             <div className="flex items-center gap-3.5">
-              <Share2 className="w-5 h-5 text-[#faa357]" />
-              <span className="font-medium">Lichka havolasini ulashish</span>
+              <Share2 className="w-5 h-5 text-purple-400" />
+              <span className="font-semibold text-xs text-violet-100">Lichka havolasini ulashish</span>
             </div>
             {copiedLink && <Check className="w-4 h-4 text-emerald-400" />}
           </button>
 
           <button
             onClick={onToggleTheme}
-            className="w-full flex items-center justify-between px-3.5 py-2.5 rounded-xl hover:bg-[#202b36] transition-colors text-left"
+            className="w-full flex items-center justify-between px-3.5 py-2.5 rounded-2xl hover:bg-violet-600/15 transition-all text-left"
           >
             <div className="flex items-center gap-3.5">
-              {isDarkMode ? <Moon className="w-5 h-5 text-[#a695e7]" /> : <Sun className="w-5 h-5 text-amber-400" />}
-              <span className="font-medium">Tungi rejim</span>
+              {isDarkMode ? <Moon className="w-5 h-5 text-violet-400" /> : <Sun className="w-5 h-5 text-amber-400" />}
+              <span className="font-semibold text-xs text-violet-100">
+                {isDarkMode ? "Qorong'u rejim (Premium Fioletoviy)" : "Yorug' rejim (Och tus)"}
+              </span>
             </div>
-            <span className={`w-8 h-4 rounded-full transition-colors relative ${isDarkMode ? 'bg-[#2481cc]' : 'bg-[#708499]'}`}>
-              <span className={`absolute top-0.5 w-3 h-3 rounded-full bg-white transition-transform ${isDarkMode ? 'left-4.5' : 'left-0.5'}`} />
+            <span className="text-[10px] uppercase font-bold text-violet-400 bg-violet-600/20 px-2 py-0.5 rounded-md">
+              {isDarkMode ? 'Dark' : 'Light'}
             </span>
           </button>
 
@@ -140,30 +142,35 @@ export const SideMenuDrawer: React.FC<SideMenuDrawerProps> = ({
               onOpenSettings();
               onClose();
             }}
-            className="w-full flex items-center gap-3.5 px-3.5 py-2.5 rounded-xl hover:bg-[#202b36] transition-colors text-left"
+            className="w-full flex items-center gap-3.5 px-3.5 py-2.5 rounded-2xl hover:bg-violet-600/15 transition-all text-left"
           >
-            <Settings className="w-5 h-5 text-[#708499]" />
-            <span className="font-medium">Sozlamalar</span>
+            <Settings className="w-5 h-5 text-violet-400" />
+            <span className="font-semibold text-xs text-violet-100">Sozlamalar</span>
           </button>
+        </div>
 
-          <div className="pt-2 my-2 border-t border-white/5" />
+        {/* Brand & Logout Footer */}
+        <div className="p-4 border-t border-violet-500/15 bg-violet-950/20 flex flex-col gap-3">
+          <div className="flex items-center gap-2">
+            <div className="w-6 h-6 rounded-lg bg-gradient-to-tr from-violet-600 to-fuchsia-500 flex items-center justify-center shadow-xs">
+              <span className="text-white text-[10px] font-black">m.</span>
+            </div>
+            <div className="flex flex-col">
+              <span className="text-xs font-black text-white">m.messages</span>
+              <span className="text-[10px] text-violet-300/70">Xavfsiz va shifrlangan</span>
+            </div>
+          </div>
 
           <button
             onClick={() => {
               logout();
               onClose();
             }}
-            className="w-full flex items-center gap-3.5 px-3.5 py-2.5 rounded-xl hover:bg-red-500/10 text-red-400 transition-colors text-left"
+            className="w-full py-2 px-3 bg-red-500/10 hover:bg-red-500/20 text-red-400 rounded-xl text-xs font-bold flex items-center justify-center gap-2 transition-colors border border-red-500/20"
           >
-            <LogOut className="w-5 h-5" />
-            <span className="font-medium">Tizimdan chiqish</span>
+            <LogOut className="w-3.5 h-3.5" />
+            Chiqish
           </button>
-        </div>
-
-        {/* Footer version */}
-        <div className="p-4 border-t border-white/5 text-[11px] text-[#708499] flex items-center justify-between">
-          <span>Telegram Web Real-Time</span>
-          <span className="text-[#65aadd] font-mono">v2.4.0</span>
         </div>
       </div>
     </div>

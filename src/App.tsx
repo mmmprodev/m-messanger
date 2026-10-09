@@ -34,10 +34,10 @@ function MessengerApp() {
   if (isLoading) {
     return (
       <div className="w-screen h-screen bg-[#0e1621] flex flex-col items-center justify-center text-white select-none">
-        <div className="w-16 h-16 rounded-full bg-[#2481cc]/20 border border-[#2481cc]/30 flex items-center justify-center animate-pulse mb-4">
-          <span className="w-8 h-8 rounded-full border-2 border-[#2481cc] border-t-transparent animate-spin" />
+        <div className="w-16 h-16 rounded-2xl bg-gradient-to-tr from-violet-600 to-fuchsia-500 flex items-center justify-center animate-pulse mb-4 shadow-lg shadow-violet-600/30">
+          <span className="text-white text-2xl font-black">m.</span>
         </div>
-        <p className="text-sm font-medium text-[#708499]">Telegram Web yuklanmoqda...</p>
+        <p className="text-sm font-bold text-violet-300">m.messages yuklanmoqda...</p>
       </div>
     );
   }
@@ -57,7 +57,7 @@ function MessengerApp() {
   };
 
   return (
-    <div className={`w-screen h-screen flex overflow-hidden ${isDarkMode ? 'bg-[#0e1621]' : 'theme-light bg-[#e6ebf0]'}`}>
+    <div className={`fixed inset-0 w-screen h-[100dvh] flex overflow-hidden ${isDarkMode ? 'bg-[#090714] text-[#f5f3ff]' : 'theme-light bg-[#f8f6fc] text-[#241442]'}`}>
       {/* 1. Left Sidebar: Chats list */}
       <Sidebar
         onOpenMenu={() => setIsMenuOpen(true)}

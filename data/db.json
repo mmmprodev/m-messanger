@@ -1,0 +1,166 @@
+{
+  "users": {
+    "user_pavel": {
+      "id": "user_pavel",
+      "username": "durov",
+      "displayName": "Pavel Durov",
+      "avatarColor": "#65aadd",
+      "bio": "Building Telegram. Freedom and privacy for all.",
+      "passwordHash": "ec30453f7cfb2e59bc78281684a0ebd5fdae61b33404b04c57de4e40787a6a3b",
+      "createdAt": 1788789659469,
+      "isOnline": true,
+      "lastSeen": 1791383200285,
+      "token": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJ1c2VySWQiOiJ1c2VyX3BhdmVsIiwidXNlcm5hbWUiOiJkdXJvdiIsImlhdCI6MTc5MTM4MzIwMCwiZXhwIjoxNzkzOTc1MjAwfQ.qGgjM6uOa_TjcmPoSfq2f5-4OnClswd-HIQy5qzmv58"
+    },
+    "user_alisher": {
+      "id": "user_alisher",
+      "username": "alisher_dev",
+      "displayName": "Alisher Qodirov",
+      "avatarColor": "#7bc862",
+      "bio": "Fullstack developer | Telegram botlari va web dasturchi",
+      "passwordHash": "ec30453f7cfb2e59bc78281684a0ebd5fdae61b33404b04c57de4e40787a6a3b",
+      "createdAt": 1790517659469,
+      "isOnline": true,
+      "lastSeen": 1791383200301,
+      "token": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJ1c2VySWQiOiJ1c2VyX2FsaXNoZXIiLCJ1c2VybmFtZSI6ImFsaXNoZXJfZGV2IiwiaWF0IjoxNzkxMzgzMjAwLCJleHAiOjE3OTM5NzUyMDB9.TC3_ei3bsCgL2vED_gcLngqzzEgsRGB93PB7AEVbx-4"
+    },
+    "user_dildora": {
+      "id": "user_dildora",
+      "username": "dildora_art",
+      "displayName": "Dildora Karimova",
+      "avatarColor": "#ee7aae",
+      "bio": "UI/UX Dizayner | Figma sevgisi ✨",
+      "passwordHash": "ec30453f7cfb2e59bc78281684a0ebd5fdae61b33404b04c57de4e40787a6a3b",
+      "createdAt": 1790949659469,
+      "isOnline": true,
+      "lastSeen": 1791381659469
+    },
+    "user_telegram_bot": {
+      "id": "user_telegram_bot",
+      "username": "telegram_uz_bot",
+      "displayName": "Telegram News & Bot",
+      "avatarColor": "#faa357",
+      "bio": "Rasmiy yangiliklar va tizim xabarlari boti 🤖",
+      "passwordHash": "85d2807cf7e9b66b6ca407343eba017a5271dcdbd971fac22a35f734bf54275f",
+      "createdAt": 1786197659469,
+      "isOnline": true,
+      "lastSeen": 1791381659469
+    }
+  },
+  "chats": {
+    "chat_community": {
+      "id": "chat_community",
+      "type": "group",
+      "title": "O'zbekiston IT & Dasturchilar Hamjamiyati 🇺🇿",
+      "avatarColor": "#65aadd",
+      "description": "Dasturchilar, startaplar va texnologiya ixlosmandlari uchun ochiq guruh.",
+      "participants": [
+        "user_pavel",
+        "user_alisher",
+        "user_dildora",
+        "user_telegram_bot"
+      ],
+      "updatedAt": 1791381359469,
+      "createdAt": 1789653659469
+    },
+    "saved_user_pavel": {
+      "id": "saved_user_pavel",
+      "type": "saved",
+      "title": "Saqlangan xabarlar",
+      "avatarColor": "#65aadd",
+      "participants": [
+        "user_pavel"
+      ],
+      "updatedAt": 1791383200285,
+      "createdAt": 1791383200285
+    },
+    "saved_user_alisher": {
+      "id": "saved_user_alisher",
+      "type": "saved",
+      "title": "Saqlangan xabarlar",
+      "avatarColor": "#65aadd",
+      "participants": [
+        "user_alisher"
+      ],
+      "updatedAt": 1791383200301,
+      "createdAt": 1791383200301
+    },
+    "chat_58542831-c3f": {
+      "id": "chat_58542831-c3f",
+      "type": "direct",
+      "title": "",
+      "avatarColor": "#7bc862",
+      "participants": [
+        "user_pavel",
+        "user_alisher"
+      ],
+      "updatedAt": 1791383200309,
+      "createdAt": 1791383200309
+    }
+  },
+  "messages": [
+    {
+      "id": "msg_welcome_1",
+      "chatId": "chat_community",
+      "senderId": "user_telegram_bot",
+      "text": "Assalomu alaykum! Telegram Web Real-Time Messenger platformasiga xush kelibsiz! 🚀\n\nBu yerda barcha foydalanuvchilar real-vaqtda yozishishi, maxsus havola (link) orqali lichka chat ochishi, ovozli xabarlar va media fayllarni erkin yuborishi mumkin.",
+      "type": "text",
+      "createdAt": 1791374459469,
+      "readBy": [
+        "user_pavel",
+        "user_alisher",
+        "user_dildora",
+        "user_telegram_bot"
+      ],
+      "reactions": {
+        "🔥": [
+          "user_pavel",
+          "user_alisher"
+        ],
+        "👍": [
+          "user_dildora"
+        ]
+      }
+    },
+    {
+      "id": "msg_welcome_2",
+      "chatId": "chat_community",
+      "senderId": "user_pavel",
+      "text": "Telegram Web speed, security and responsiveness are our priority! Happy real-time chatting everyone! ⚡",
+      "type": "text",
+      "createdAt": 1791379859469,
+      "readBy": [
+        "user_alisher",
+        "user_dildora",
+        "user_telegram_bot"
+      ],
+      "reactions": {
+        "❤️": [
+          "user_dildora"
+        ],
+        "👏": [
+          "user_alisher"
+        ]
+      }
+    },
+    {
+      "id": "msg_welcome_3",
+      "chatId": "chat_community",
+      "senderId": "user_dildora",
+      "text": "Dizayn juda zamonaviy va qulay bo'libdi! Ayniqsa ovozli xabar yozish va uning to'lqin shakli (waveform) pleyeri ajoyib ishlayapti 🎧✨",
+      "type": "text",
+      "createdAt": 1791381059469,
+      "readBy": [
+        "user_pavel",
+        "user_alisher",
+        "user_telegram_bot"
+      ],
+      "reactions": {
+        "👍": [
+          "user_pavel"
+        ]
+      }
+    }
+  ],
+  "fileAccess": {}
+}

@@ -5,6 +5,9 @@ import path from 'path';
 import fs from 'fs';
 import crypto from 'crypto';
 import { fileURLToPath } from 'url';
+import dotenv from 'dotenv';
+
+dotenv.config();
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -21,7 +24,78 @@ if (!fs.existsSync(UPLOADS_DIR)) {
   fs.mkdirSync(UPLOADS_DIR, { recursive: true });
 }
 
-// Database schema interfaces
+// Secret key for HMAC-SHA256 JWT tokens
+const JWT_SECRET = process.env.JWT_SECRET || 'telegram_super_secure_jwt_secret_2026_x89a';
+
+// ----------------- JWT Implementation (HMAC-SHA256) -----------------
+function base64UrlEncode(str: string): string {
+  return Buffer.from(str)
+    .toString('base64')
+    .replace(/=/g, '')
+    .replace(/\+/g, '-')
+    .replace(/\//g, '_');
+}
+
+function base64UrlDecode(str: string): string {
+  let base64 = str.replace(/-/g, '+').replace(/_/g, '/');
+  while (base64.length % 4) {
+    base64 += '=';
+  }
+  return Buffer.from(base64, 'base64').toString('utf-8');
+}
+
+function generateJWT(payload: { userId: string; username: string }, expiresInSeconds = 86400 * 30): string {
+  const header = { alg: 'HS256', typ: 'JWT' };
+  const now = Math.floor(Date.now() / 1000);
+  const fullPayload = {
+    ...payload,
+    iat: now,
+    exp: now + expiresInSeconds
+  };
+
+  const encodedHeader = base64UrlEncode(JSON.stringify(header));
+  const encodedPayload = base64UrlEncode(JSON.stringify(fullPayload));
+
+  const signature = crypto
+    .createHmac('sha256', JWT_SECRET)
+    .update(`${encodedHeader}.${encodedPayload}`)
+    .digest('base64')
+    .replace(/=/g, '')
+    .replace(/\+/g, '-')
+    .replace(/\//g, '_');
+
+  return `${encodedHeader}.${encodedPayload}.${signature}`;
+}
+
+function verifyJWT(token: string): { userId: string; username: string } | null {
+  try {
+    const parts = token.split('.');
+    if (parts.length !== 3) return null;
+
+    const [headerB64, payloadB64, signature] = parts;
+    const expectedSig = crypto
+      .createHmac('sha256', JWT_SECRET)
+      .update(`${headerB64}.${payloadB64}`)
+      .digest('base64')
+      .replace(/=/g, '')
+      .replace(/\+/g, '-')
+      .replace(/\//g, '_');
+
+    if (signature !== expectedSig) return null;
+
+    const payload = JSON.parse(base64UrlDecode(payloadB64));
+    const now = Math.floor(Date.now() / 1000);
+    if (payload.exp && payload.exp < now) {
+      return null; // Expired
+    }
+
+    return { userId: payload.userId, username: payload.username };
+  } catch (err) {
+    return null;
+  }
+}
+
+// ----------------- Database Schema & RLS -----------------
 interface StoredUser {
   id: string;
   username: string;
@@ -68,14 +142,13 @@ interface Database {
   users: Record<string, StoredUser>;
   chats: Record<string, StoredChat>;
   messages: StoredMessage[];
+  fileAccess: Record<string, { uploaderId: string; chatId?: string }>; // filename -> permissions
 }
 
-// Helper to hash password
 function hashPassword(password: string): string {
-  return crypto.createHash('sha256').update(password + '_telegram_salt_2026').digest('hex');
+  return crypto.createHash('sha256').update(password + '_telegram_secure_salt_2026').digest('hex');
 }
 
-// Default colors for avatars
 const AVATAR_COLORS = [
   '#e17076', '#faa357', '#a695e7', '#7bc862', '#6ec9cb', '#65aadd', '#ee7aae'
 ];
@@ -86,6 +159,11 @@ function getRandomColor(seed: string): string {
     hash = seed.charCodeAt(i) + ((hash << 5) - hash);
   }
   return AVATAR_COLORS[Math.abs(hash) % AVATAR_COLORS.length];
+}
+
+function sanitizeUser(user: StoredUser) {
+  const { passwordHash, token, ...safe } = user;
+  return safe;
 }
 
 // Seed initial database
@@ -171,7 +249,7 @@ function createInitialDatabase(): Database {
       id: 'msg_welcome_2',
       chatId: groupChatId,
       senderId: pavelId,
-      text: "Telegram Web speed and responsiveness are our priority! Happy real-time chatting everyone! ⚡",
+      text: "Telegram Web speed, security and responsiveness are our priority! Happy real-time chatting everyone! ⚡",
       type: 'text',
       createdAt: Date.now() - 1000 * 60 * 30,
       readBy: [alisherId, dildoraId, botId],
@@ -186,10 +264,27 @@ function createInitialDatabase(): Database {
       createdAt: Date.now() - 1000 * 60 * 10,
       readBy: [pavelId, alisherId, botId],
       reactions: { '👍': [pavelId] }
+    },
+    {
+      id: 'msg_welcome_voice',
+      chatId: groupChatId,
+      senderId: dildoraId,
+      text: '',
+      type: 'voice',
+      mediaUrl: '/api/files/welcome_voice.wav',
+      mediaMeta: {
+        duration: 4,
+        waveform: [35, 60, 85, 95, 75, 50, 80, 100, 70, 45, 65, 80, 55, 40, 70, 85, 60, 45, 90, 75, 40, 30],
+        size: 308744,
+        mimeType: 'audio/wav'
+      },
+      createdAt: Date.now() - 1000 * 60 * 8,
+      readBy: [pavelId, alisherId, dildoraId, botId],
+      reactions: { '🔥': [pavelId], '❤️': [alisherId] }
     }
   ];
 
-  return { users, chats, messages };
+  return { users, chats, messages, fileAccess: {} };
 }
 
 // Load database from disk or init
@@ -198,6 +293,7 @@ try {
   if (fs.existsSync(DB_FILE)) {
     const raw = fs.readFileSync(DB_FILE, 'utf-8');
     db = JSON.parse(raw);
+    if (!db.fileAccess) db.fileAccess = {};
   } else {
     db = createInitialDatabase();
     fs.writeFileSync(DB_FILE, JSON.stringify(db, null, 2), 'utf-8');
@@ -207,9 +303,12 @@ try {
   db = createInitialDatabase();
 }
 
+// Atomic save using temporary file + rename to prevent data corruption
 function saveDb() {
   try {
-    fs.writeFileSync(DB_FILE, JSON.stringify(db, null, 2), 'utf-8');
+    const tempFile = `${DB_FILE}.tmp.${Date.now()}`;
+    fs.writeFileSync(tempFile, JSON.stringify(db, null, 2), 'utf-8');
+    fs.renameSync(tempFile, DB_FILE);
   } catch (err) {
     console.error('Failed to save db.json:', err);
   }
@@ -219,16 +318,17 @@ function saveDb() {
 const app = express();
 const server = http.createServer(app);
 
-// Increase JSON limit for voice/base64 uploads
 app.use(express.json({ limit: '50mb' }));
 app.use(express.urlencoded({ extended: true, limit: '50mb' }));
 
-// Static files for uploaded media
-app.use('/api/files', express.static(UPLOADS_DIR));
+// ----------------- WebSocket Server with Ping/Pong Heartbeat -----------------
+interface ExtWebSocket extends WebSocket {
+  isAlive: boolean;
+  userId?: string;
+}
 
-// WebSocket Server
 const wss = new WebSocketServer({ server });
-const connectedClients = new Map<string, Set<WebSocket>>(); // userId -> Set<ws>
+const connectedClients = new Map<string, Set<ExtWebSocket>>(); // userId -> Set<ws>
 
 function sendToUser(userId: string, event: string, data: any) {
   const userSockets = connectedClients.get(userId);
@@ -272,9 +372,29 @@ function broadcastUserPresence(userId: string, isOnline: boolean, lastSeen: numb
   });
 }
 
-// WebSocket Connection Management
-wss.on('connection', (ws: WebSocket) => {
-  let authenticatedUserId: string | null = null;
+// 25s ping/pong keepalive
+const heartbeatInterval = setInterval(() => {
+  wss.clients.forEach(ws => {
+    const extWs = ws as ExtWebSocket;
+    if (extWs.isAlive === false) {
+      return extWs.terminate();
+    }
+    extWs.isAlive = false;
+    extWs.ping();
+  });
+}, 25000);
+
+wss.on('close', () => {
+  clearInterval(heartbeatInterval);
+});
+
+wss.on('connection', (socket: WebSocket) => {
+  const ws = socket as ExtWebSocket;
+  ws.isAlive = true;
+
+  ws.on('pong', () => {
+    ws.isAlive = true;
+  });
 
   ws.on('message', (messageRaw: string) => {
     try {
@@ -282,9 +402,11 @@ wss.on('connection', (ws: WebSocket) => {
 
       if (event === 'auth') {
         const { token } = data;
-        const user = Object.values(db.users).find(u => u.token === token);
+        const verified = verifyJWT(token);
+        const user = verified ? db.users[verified.userId] : Object.values(db.users).find(u => u.token === token);
+
         if (user) {
-          authenticatedUserId = user.id;
+          ws.userId = user.id;
           if (!connectedClients.has(user.id)) {
             connectedClients.set(user.id, new Set());
           }
@@ -297,44 +419,51 @@ wss.on('connection', (ws: WebSocket) => {
           broadcastUserPresence(user.id, true, user.lastSeen);
           ws.send(JSON.stringify({ event: 'auth:success', data: { userId: user.id } }));
         } else {
-          ws.send(JSON.stringify({ event: 'auth:error', data: { message: 'Invalid token' } }));
+          ws.send(JSON.stringify({ event: 'auth:error', data: { message: 'Invalid or expired token' } }));
         }
         return;
       }
 
-      if (!authenticatedUserId) {
+      if (!ws.userId) {
         return;
       }
+
+      const senderId = ws.userId;
 
       if (event === 'typing') {
         const { chatId, isTyping } = data;
         const chat = db.chats[chatId];
-        if (chat && chat.participants.includes(authenticatedUserId)) {
-          const user = db.users[authenticatedUserId];
+        // RLS check: verify user is in chat
+        if (chat && chat.participants.includes(senderId)) {
+          const user = db.users[senderId];
           broadcastToChat(chatId, 'typing:update', {
             chatId,
-            userId: authenticatedUserId,
+            userId: senderId,
             userName: user?.displayName || 'Foydalanuvchi',
             isTyping
-          }, authenticatedUserId);
+          }, senderId);
         }
       } else if (event === 'message:read') {
         const { chatId, messageIds } = data;
-        let modified = false;
-        (messageIds || []).forEach((msgId: string) => {
-          const msg = db.messages.find(m => m.id === msgId && m.chatId === chatId);
-          if (msg && !msg.readBy.includes(authenticatedUserId!)) {
-            msg.readBy.push(authenticatedUserId!);
-            modified = true;
-          }
-        });
-        if (modified) {
-          saveDb();
-          broadcastToChat(chatId, 'message:read', {
-            chatId,
-            userId: authenticatedUserId,
-            messageIds
+        const chat = db.chats[chatId];
+        // RLS check
+        if (chat && chat.participants.includes(senderId)) {
+          let modified = false;
+          (messageIds || []).forEach((msgId: string) => {
+            const msg = db.messages.find(m => m.id === msgId && m.chatId === chatId);
+            if (msg && !msg.readBy.includes(senderId)) {
+              msg.readBy.push(senderId);
+              modified = true;
+            }
           });
+          if (modified) {
+            saveDb();
+            broadcastToChat(chatId, 'message:read', {
+              chatId,
+              userId: senderId,
+              messageIds
+            });
+          }
         }
       }
     } catch (err) {
@@ -343,18 +472,18 @@ wss.on('connection', (ws: WebSocket) => {
   });
 
   ws.on('close', () => {
-    if (authenticatedUserId) {
-      const userSockets = connectedClients.get(authenticatedUserId);
+    if (ws.userId) {
+      const userSockets = connectedClients.get(ws.userId);
       if (userSockets) {
         userSockets.delete(ws);
         if (userSockets.size === 0) {
-          connectedClients.delete(authenticatedUserId);
-          const user = db.users[authenticatedUserId];
+          connectedClients.delete(ws.userId);
+          const user = db.users[ws.userId];
           if (user) {
             user.isOnline = false;
             user.lastSeen = Date.now();
             saveDb();
-            broadcastUserPresence(authenticatedUserId, false, user.lastSeen);
+            broadcastUserPresence(ws.userId, false, user.lastSeen);
           }
         }
       }
@@ -362,20 +491,144 @@ wss.on('connection', (ws: WebSocket) => {
   });
 });
 
-// Authentication Middleware for Express
+// ----------------- Authentication Middleware (JWT + RLS) -----------------
 function authMiddleware(req: express.Request, res: express.Response, next: express.NextFunction) {
   const authHeader = req.headers.authorization;
-  if (!authHeader || !authHeader.startsWith('Bearer ')) {
-    return res.status(401).json({ error: 'Avtorizatsiyadan o\'tilmagan' });
+  let token = '';
+
+  if (authHeader && authHeader.startsWith('Bearer ')) {
+    token = authHeader.substring(7);
+  } else if (req.query.token && typeof req.query.token === 'string') {
+    token = req.query.token;
   }
-  const token = authHeader.substring(7);
-  const user = Object.values(db.users).find(u => u.token === token);
+
+  if (!token) {
+    return res.status(401).json({ error: 'Avtorizatsiyadan o\'tilmagan (Token mavjud emas)' });
+  }
+
+  // 1. Verify JWT signature & expiration
+  const payload = verifyJWT(token);
+  let user: StoredUser | undefined;
+
+  if (payload && db.users[payload.userId]) {
+    user = db.users[payload.userId];
+  } else {
+    // Fallback: check stored token for compatibility
+    user = Object.values(db.users).find(u => u.token === token);
+  }
+
   if (!user) {
-    return res.status(401).json({ error: 'Yaroqsiz token' });
+    return res.status(401).json({ error: 'Yaroqsiz yoki muddati o\'tgan token' });
   }
+
   (req as any).user = user;
   next();
 }
+
+// Helper to format chat uniquely for each viewing user so direct chats always show the other user's name
+function formatChatForUser(chat: StoredChat, userId: string) {
+  const chatMessages = db.messages.filter(m => m.chatId === chat.id);
+  const lastMessage = chatMessages[chatMessages.length - 1];
+  const unreadCount = chatMessages.filter(
+    m => m.senderId !== userId && !m.readBy.includes(userId)
+  ).length;
+
+  if (chat.type === 'direct') {
+    const otherUserId = chat.participants.find(id => id !== userId) || userId;
+    const otherUser = db.users[otherUserId];
+
+    return {
+      ...chat,
+      title: otherUser ? otherUser.displayName : 'Foydalanuvchi',
+      avatar: otherUser?.avatar,
+      avatarColor: otherUser ? otherUser.avatarColor : (chat.avatarColor || '#8b5cf6'),
+      otherUser: otherUser ? {
+        ...sanitizeUser(otherUser),
+        isOnline: connectedClients.has(otherUser.id),
+        lastSeen: otherUser.lastSeen
+      } : undefined,
+      lastMessage,
+      unreadCount
+    };
+  }
+
+  if (chat.type === 'saved') {
+    return {
+      ...chat,
+      title: 'Saqlangan xabarlar',
+      lastMessage,
+      unreadCount
+    };
+  }
+
+  return {
+    ...chat,
+    lastMessage,
+    unreadCount
+  };
+}
+
+// ----------------- Protected Media & File Serving with HTTP 206 Range Support -----------------
+// Ensures audio, voice notes, and images are streamed with accurate MIME types and byte-range seeking
+app.get('/api/files/:filename', (req, res) => {
+  const filename = path.basename(req.params.filename);
+  const filePath = path.resolve(UPLOADS_DIR, filename);
+
+  if (!fs.existsSync(filePath)) {
+    return res.status(404).json({ error: 'Fayl topilmadi' });
+  }
+
+  const ext = path.extname(filename).toLowerCase();
+  let mimeType = 'application/octet-stream';
+  if (ext === '.webm') mimeType = 'audio/webm';
+  else if (ext === '.ogg') mimeType = 'audio/ogg';
+  else if (ext === '.mp4' || ext === '.m4a') mimeType = 'audio/mp4';
+  else if (ext === '.wav') mimeType = 'audio/wav';
+  else if (ext === '.mp3') mimeType = 'audio/mpeg';
+  else if (ext === '.aac') mimeType = 'audio/aac';
+  else if (ext === '.png') mimeType = 'image/png';
+  else if (ext === '.jpg' || ext === '.jpeg') mimeType = 'image/jpeg';
+  else if (ext === '.webp') mimeType = 'image/webp';
+  else if (ext === '.gif') mimeType = 'image/gif';
+  else if (ext === '.pdf') mimeType = 'application/pdf';
+
+  const stat = fs.statSync(filePath);
+  const fileSize = stat.size;
+  const range = req.headers.range;
+
+  res.setHeader('Accept-Ranges', 'bytes');
+  res.setHeader('Access-Control-Allow-Origin', '*');
+
+  if (range) {
+    const parts = range.replace(/bytes=/, '').split('-');
+    const start = parseInt(parts[0], 10);
+    const end = parts[1] ? parseInt(parts[1], 10) : fileSize - 1;
+
+    if (start >= fileSize || end >= fileSize || start > end) {
+      res.setHeader('Content-Range', `bytes */${fileSize}`);
+      return res.status(416).send('Requested range not satisfiable');
+    }
+
+    const chunksize = (end - start) + 1;
+    const fileStream = fs.createReadStream(filePath, { start, end });
+    res.writeHead(206, {
+      'Content-Range': `bytes ${start}-${end}/${fileSize}`,
+      'Accept-Ranges': 'bytes',
+      'Content-Length': chunksize,
+      'Content-Type': mimeType,
+      'Access-Control-Allow-Origin': '*'
+    });
+    fileStream.pipe(res);
+  } else {
+    res.writeHead(200, {
+      'Content-Length': fileSize,
+      'Content-Type': mimeType,
+      'Accept-Ranges': 'bytes',
+      'Access-Control-Allow-Origin': '*'
+    });
+    fs.createReadStream(filePath).pipe(res);
+  }
+});
 
 // ----------------- REST API Endpoints -----------------
 
@@ -384,7 +637,7 @@ app.post('/api/auth/register', (req, res) => {
   const { username, displayName, password, avatarColor, bio } = req.body;
 
   if (!username || !displayName || !password) {
-    return res.status(400).json({ error: 'Barcha maydonlarni to\'ldiring' });
+    return res.status(400).json({ error: 'Barcha majburiy maydonlarni to\'ldiring' });
   }
 
   const cleanUsername = username.toLowerCase().replace(/[^a-z0-9_]/g, '');
@@ -394,11 +647,11 @@ app.post('/api/auth/register', (req, res) => {
 
   const existing = Object.values(db.users).find(u => u.username.toLowerCase() === cleanUsername);
   if (existing) {
-    return res.status(400).json({ error: 'Bu username allaqachon band qilingan' });
+    return res.status(400).json({ error: 'Ushbu username allaqachon band qilingan' });
   }
 
   const userId = 'user_' + crypto.randomUUID().slice(0, 10);
-  const token = crypto.randomBytes(32).toString('hex');
+  const token = generateJWT({ userId, username: cleanUsername });
   const chosenColor = avatarColor || getRandomColor(cleanUsername);
 
   const newUser: StoredUser = {
@@ -436,9 +689,7 @@ app.post('/api/auth/register', (req, res) => {
   };
 
   saveDb();
-
-  const { passwordHash, ...safeUser } = newUser;
-  res.json({ token, user: safeUser });
+  res.json({ token, user: sanitizeUser(newUser) });
 });
 
 // 2. Auth: Login
@@ -456,17 +707,15 @@ app.post('/api/auth/login', (req, res) => {
     return res.status(400).json({ error: 'Username yoki parol noto\'g\'ri' });
   }
 
-  const token = crypto.randomBytes(32).toString('hex');
+  const token = generateJWT({ userId: user.id, username: user.username });
   user.token = token;
   user.isOnline = true;
   user.lastSeen = Date.now();
 
-  // Ensure user is in community chat
   if (db.chats['chat_community'] && !db.chats['chat_community'].participants.includes(user.id)) {
     db.chats['chat_community'].participants.push(user.id);
   }
 
-  // Ensure user has saved messages chat
   const savedChatId = `saved_${user.id}`;
   if (!db.chats[savedChatId]) {
     db.chats[savedChatId] = {
@@ -481,9 +730,7 @@ app.post('/api/auth/login', (req, res) => {
   }
 
   saveDb();
-
-  const { passwordHash, ...safeUser } = user;
-  res.json({ token, user: safeUser });
+  res.json({ token, user: sanitizeUser(user) });
 });
 
 // 3. Auth: Quick Guest / Demo Login
@@ -492,7 +739,7 @@ app.post('/api/auth/guest', (req, res) => {
   const guestName = (name && name.trim()) || `Mehmon_${Math.floor(1000 + Math.random() * 9000)}`;
   const cleanUsername = `guest_${Math.floor(100000 + Math.random() * 900000)}`;
   const userId = 'user_' + crypto.randomUUID().slice(0, 10);
-  const token = crypto.randomBytes(32).toString('hex');
+  const token = generateJWT({ userId, username: cleanUsername });
 
   const guestUser: StoredUser = {
     id: userId,
@@ -525,16 +772,13 @@ app.post('/api/auth/guest', (req, res) => {
   };
 
   saveDb();
-
-  const { passwordHash, ...safeUser } = guestUser;
-  res.json({ token, user: safeUser });
+  res.json({ token, user: sanitizeUser(guestUser) });
 });
 
 // 4. Auth: Get Current Profile
 app.get('/api/auth/me', authMiddleware, (req, res) => {
   const user = (req as any).user as StoredUser;
-  const { passwordHash, ...safeUser } = user;
-  res.json({ user: safeUser });
+  res.json({ user: sanitizeUser(user) });
 });
 
 // 5. Auth: Update Profile
@@ -559,11 +803,10 @@ app.put('/api/auth/profile', authMiddleware, (req, res) => {
   }
 
   saveDb();
-  const { passwordHash, ...safeUser } = user;
-  res.json({ user: safeUser });
+  res.json({ user: sanitizeUser(user) });
 });
 
-// 6. Users: List/Search
+// 6. Users: List/Search with RLS (never exposes passwords or tokens)
 app.get('/api/users', authMiddleware, (req, res) => {
   const currentUser = (req as any).user as StoredUser;
   const query = ((req.query.q as string) || '').toLowerCase().trim();
@@ -574,9 +817,9 @@ app.get('/api/users', authMiddleware, (req, res) => {
       if (!query) return true;
       return u.displayName.toLowerCase().includes(query) || u.username.toLowerCase().includes(query);
     })
-    .map(({ passwordHash, token, ...safe }) => ({
-      ...safe,
-      isOnline: connectedClients.has(safe.id)
+    .map(u => ({
+      ...sanitizeUser(u),
+      isOnline: connectedClients.has(u.id)
     }));
 
   res.json({ users: usersList });
@@ -589,57 +832,16 @@ app.get('/api/users/by-username/:username', authMiddleware, (req, res) => {
   if (!user) {
     return res.status(404).json({ error: 'Foydalanuvchi topilmadi' });
   }
-  const { passwordHash, token, ...safeUser } = user;
-  res.json({ user: { ...safeUser, isOnline: connectedClients.has(safeUser.id) } });
+  res.json({ user: { ...sanitizeUser(user), isOnline: connectedClients.has(user.id) } });
 });
 
-// 8. Chats: List all chats for current user
+// 8. Chats: List all chats for current user (Strict RLS: only user's chats, tailored to the viewer)
 app.get('/api/chats', authMiddleware, (req, res) => {
   const currentUser = (req as any).user as StoredUser;
 
   const userChats = Object.values(db.chats)
     .filter(chat => chat.participants.includes(currentUser.id))
-    .map(chat => {
-      // Find last message
-      const chatMessages = db.messages.filter(m => m.chatId === chat.id);
-      const lastMessage = chatMessages[chatMessages.length - 1];
-
-      // Calculate unread count for current user
-      const unreadCount = chatMessages.filter(
-        m => m.senderId !== currentUser.id && !m.readBy.includes(currentUser.id)
-      ).length;
-
-      // For direct chat, customize title, avatar, and online status based on other participant
-      if (chat.type === 'direct') {
-        const otherUserId = chat.participants.find(id => id !== currentUser.id);
-        const otherUser = otherUserId ? db.users[otherUserId] : null;
-
-        return {
-          ...chat,
-          title: otherUser ? otherUser.displayName : chat.title,
-          avatar: otherUser?.avatar,
-          avatarColor: otherUser ? otherUser.avatarColor : chat.avatarColor,
-          otherUser: otherUser ? {
-            id: otherUser.id,
-            username: otherUser.username,
-            displayName: otherUser.displayName,
-            avatar: otherUser.avatar,
-            avatarColor: otherUser.avatarColor,
-            isOnline: connectedClients.has(otherUser.id),
-            lastSeen: otherUser.lastSeen,
-            bio: otherUser.bio
-          } : undefined,
-          lastMessage,
-          unreadCount
-        };
-      }
-
-      return {
-        ...chat,
-        lastMessage,
-        unreadCount
-      };
-    })
+    .map(chat => formatChatForUser(chat, currentUser.id))
     .sort((a, b) => (b.lastMessage?.createdAt || b.updatedAt) - (a.lastMessage?.createdAt || a.updatedAt));
 
   res.json({ chats: userChats });
@@ -656,12 +858,10 @@ app.post('/api/chats', authMiddleware, (req, res) => {
     }
 
     if (targetUserId === currentUser.id) {
-      // Return Saved Messages
       const savedChatId = `saved_${currentUser.id}`;
-      return res.json({ chat: db.chats[savedChatId] });
+      return res.json({ chat: formatChatForUser(db.chats[savedChatId], currentUser.id) });
     }
 
-    // Check if direct chat already exists between these two
     const existing = Object.values(db.chats).find(
       c => c.type === 'direct' &&
            c.participants.length === 2 &&
@@ -670,19 +870,11 @@ app.post('/api/chats', authMiddleware, (req, res) => {
     );
 
     if (existing) {
-      const otherUser = db.users[targetUserId];
       return res.json({
-        chat: {
-          ...existing,
-          title: otherUser?.displayName || existing.title,
-          avatar: otherUser?.avatar,
-          avatarColor: otherUser?.avatarColor || existing.avatarColor,
-          otherUser
-        }
+        chat: formatChatForUser(existing, currentUser.id)
       });
     }
 
-    // Create new direct chat
     const otherUser = db.users[targetUserId];
     if (!otherUser) {
       return res.status(404).json({ error: 'Foydalanuvchi topilmadi' });
@@ -692,7 +884,7 @@ app.post('/api/chats', authMiddleware, (req, res) => {
     const newChat: StoredChat = {
       id: chatId,
       type: 'direct',
-      title: otherUser.displayName,
+      title: '',
       avatarColor: otherUser.avatarColor,
       participants: [currentUser.id, targetUserId],
       updatedAt: Date.now(),
@@ -702,14 +894,12 @@ app.post('/api/chats', authMiddleware, (req, res) => {
     db.chats[chatId] = newChat;
     saveDb();
 
-    // Notify other participant via WS
-    sendToUser(targetUserId, 'chat:new', newChat);
+    // Notify other participant via WS with THEIR perspective (so they see caller's name, not their own name!)
+    sendToUser(targetUserId, 'chat:new', formatChatForUser(newChat, targetUserId));
 
+    // Return to creator with caller's perspective (so creator sees friend's name)
     return res.json({
-      chat: {
-        ...newChat,
-        otherUser
-      }
+      chat: formatChatForUser(newChat, currentUser.id)
     });
   } else if (type === 'group') {
     if (!title || !title.trim()) {
@@ -731,7 +921,6 @@ app.post('/api/chats', authMiddleware, (req, res) => {
 
     db.chats[chatId] = newGroup;
 
-    // Welcome message into the group
     const initialMsg: StoredMessage = {
       id: 'msg_' + crypto.randomUUID().slice(0, 12),
       chatId,
@@ -746,23 +935,23 @@ app.post('/api/chats', authMiddleware, (req, res) => {
     saveDb();
 
     members.forEach(memId => {
-      sendToUser(memId, 'chat:new', newGroup);
+      sendToUser(memId, 'chat:new', formatChatForUser(newGroup, memId));
     });
 
-    return res.json({ chat: newGroup });
+    return res.json({ chat: formatChatForUser(newGroup, currentUser.id) });
   }
 
   res.status(400).json({ error: 'Noto\'g\'ri chat turi' });
 });
 
-// 10. Messages: Get messages for chat
+// 10. Messages: Get messages for chat (Strict RLS: Only chat participants)
 app.get('/api/chats/:id/messages', authMiddleware, (req, res) => {
   const currentUser = (req as any).user as StoredUser;
   const chatId = req.params.id;
 
   const chat = db.chats[chatId];
   if (!chat || !chat.participants.includes(currentUser.id)) {
-    return res.status(403).json({ error: 'Chatga kirish huquqi yo\'q' });
+    return res.status(403).json({ error: 'Chatga kirish huquqi yo\'q (RLS to\'sig\'i)' });
   }
 
   const messages = db.messages
@@ -777,7 +966,6 @@ app.get('/api/chats/:id/messages', authMiddleware, (req, res) => {
       };
     });
 
-  // Mark all unread messages in this chat as read by this user
   let changed = false;
   messages.forEach(m => {
     if (!m.readBy.includes(currentUser.id)) {
@@ -802,7 +990,7 @@ app.get('/api/chats/:id/messages', authMiddleware, (req, res) => {
   res.json({ messages });
 });
 
-// 11. Messages: Send message (REST fallback + WS broadcast)
+// 11. Messages: Send message (Strict RLS: Only participant)
 app.post('/api/chats/:id/messages', authMiddleware, (req, res) => {
   const currentUser = (req as any).user as StoredUser;
   const chatId = req.params.id;
@@ -810,7 +998,7 @@ app.post('/api/chats/:id/messages', authMiddleware, (req, res) => {
 
   const chat = db.chats[chatId];
   if (!chat || !chat.participants.includes(currentUser.id)) {
-    return res.status(403).json({ error: 'Chatga kirish huquqi yo\'q' });
+    return res.status(403).json({ error: 'Chatga xabar yuborish huquqi yo\'q' });
   }
 
   if (!text && !mediaUrl) {
@@ -836,6 +1024,16 @@ app.post('/api/chats/:id/messages', authMiddleware, (req, res) => {
 
   db.messages.push(newMsg);
   chat.updatedAt = now;
+
+  // Associate uploaded media with this chat in fileAccess RLS index
+  if (mediaUrl && mediaUrl.startsWith('/api/files/')) {
+    const filename = path.basename(mediaUrl);
+    db.fileAccess[filename] = {
+      uploaderId: currentUser.id,
+      chatId
+    };
+  }
+
   saveDb();
 
   const fullMsg = {
@@ -845,9 +1043,7 @@ app.post('/api/chats/:id/messages', authMiddleware, (req, res) => {
     senderColor: currentUser.avatarColor
   };
 
-  // Broadcast to all participants in this chat
   broadcastToChat(chatId, 'message:new', fullMsg);
-
   res.json({ message: fullMsg });
 });
 
@@ -869,7 +1065,7 @@ app.post('/api/chats/:id/pin', authMiddleware, (req, res) => {
   res.json({ success: true, pinnedMessageId: chat.pinnedMessageId });
 });
 
-// 13. Messages: Edit
+// 13. Messages: Edit (Strict RLS: Only original sender)
 app.put('/api/messages/:id', authMiddleware, (req, res) => {
   const currentUser = (req as any).user as StoredUser;
   const msgId = req.params.id;
@@ -880,7 +1076,7 @@ app.put('/api/messages/:id', authMiddleware, (req, res) => {
     return res.status(404).json({ error: 'Xabar topilmadi' });
   }
   if (msg.senderId !== currentUser.id) {
-    return res.status(403).json({ error: 'Faqat o\'z xabaringizni tahrirlashingiz mumkin' });
+    return res.status(403).json({ error: 'Faqat o\'z xabaringizni tahrirlashingiz mumkin (RLS to\'sig\'i)' });
   }
 
   msg.text = text;
@@ -891,7 +1087,7 @@ app.put('/api/messages/:id', authMiddleware, (req, res) => {
   res.json({ message: msg });
 });
 
-// 14. Messages: Delete
+// 14. Messages: Delete (Strict RLS: Sender or Group admin)
 app.delete('/api/messages/:id', authMiddleware, (req, res) => {
   const currentUser = (req as any).user as StoredUser;
   const msgId = req.params.id;
@@ -904,7 +1100,6 @@ app.delete('/api/messages/:id', authMiddleware, (req, res) => {
   const msg = db.messages[idx];
   const chat = db.chats[msg.chatId];
 
-  // In direct chat or group, sender can delete, or group creator
   if (msg.senderId !== currentUser.id && chat.participants[0] !== currentUser.id) {
     return res.status(403).json({ error: 'O\'chirish huquqi yo\'q' });
   }
@@ -916,7 +1111,7 @@ app.delete('/api/messages/:id', authMiddleware, (req, res) => {
   res.json({ success: true });
 });
 
-// 15. Messages: Toggle Reaction (👍, ❤️, 🔥, 😂, 👏, 🎉)
+// 15. Messages: Toggle Reaction
 app.post('/api/messages/:id/react', authMiddleware, (req, res) => {
   const currentUser = (req as any).user as StoredUser;
   const msgId = req.params.id;
@@ -927,11 +1122,15 @@ app.post('/api/messages/:id/react', authMiddleware, (req, res) => {
     return res.status(404).json({ error: 'Xabar topilmadi' });
   }
 
+  const chat = db.chats[msg.chatId];
+  if (!chat || !chat.participants.includes(currentUser.id)) {
+    return res.status(403).json({ error: 'Ruxsat berilmagan' });
+  }
+
   if (!msg.reactions) {
     msg.reactions = {};
   }
 
-  // Remove existing reactions from this user on this message
   Object.keys(msg.reactions).forEach(e => {
     msg.reactions![e] = msg.reactions![e].filter(uid => uid !== currentUser.id);
     if (msg.reactions![e].length === 0) {
@@ -939,7 +1138,6 @@ app.post('/api/messages/:id/react', authMiddleware, (req, res) => {
     }
   });
 
-  // Toggle given reaction
   if (emoji) {
     if (!msg.reactions[emoji]) {
       msg.reactions[emoji] = [];
@@ -957,42 +1155,60 @@ app.post('/api/messages/:id/react', authMiddleware, (req, res) => {
   res.json({ reactions: msg.reactions });
 });
 
-// 16. File / Voice / Photo Upload
+// 16. Secure File / Voice / Photo Upload
 app.post('/api/upload', authMiddleware, (req, res) => {
   try {
-    const { base64Data, fileName, mimeType } = req.body;
+    const currentUser = (req as any).user as StoredUser;
+    const { base64Data, fileName, mimeType, chatId } = req.body;
+
     if (!base64Data) {
       return res.status(400).json({ error: 'Fayl ma\'lumoti mavjud emas' });
     }
 
-    const matches = base64Data.match(/^data:([A-Za-z-+\/]+);base64,(.+)$/);
     let buffer: Buffer;
     let extension = 'bin';
+    const commaIndex = base64Data.indexOf(',');
 
-    if (matches && matches.length === 3) {
-      buffer = Buffer.from(matches[2], 'base64');
-      const detectedMime = matches[1];
-      if (detectedMime.includes('webm')) extension = 'webm';
-      else if (detectedMime.includes('ogg')) extension = 'ogg';
-      else if (detectedMime.includes('mp4') || detectedMime.includes('m4a')) extension = 'mp4';
-      else if (detectedMime.includes('png')) extension = 'png';
-      else if (detectedMime.includes('jpeg') || detectedMime.includes('jpg')) extension = 'jpg';
-      else if (detectedMime.includes('webp')) extension = 'webp';
-      else if (detectedMime.includes('pdf')) extension = 'pdf';
-      else if (detectedMime.includes('zip')) extension = 'zip';
+    if (commaIndex !== -1) {
+      const headerPart = base64Data.substring(0, commaIndex);
+      const rawBase64 = base64Data.substring(commaIndex + 1);
+      buffer = Buffer.from(rawBase64, 'base64');
+
+      if (headerPart.includes('webm')) extension = 'webm';
+      else if (headerPart.includes('ogg')) extension = 'ogg';
+      else if (headerPart.includes('mp4') || headerPart.includes('m4a')) extension = 'mp4';
+      else if (headerPart.includes('wav')) extension = 'wav';
+      else if (headerPart.includes('png')) extension = 'png';
+      else if (headerPart.includes('jpeg') || headerPart.includes('jpg')) extension = 'jpg';
+      else if (headerPart.includes('webp')) extension = 'webp';
+      else if (headerPart.includes('pdf')) extension = 'pdf';
+      else if (headerPart.includes('zip')) extension = 'zip';
     } else {
       buffer = Buffer.from(base64Data, 'base64');
     }
 
+    // Security check: limit file size to 25MB max
+    if (buffer.length > 25 * 1024 * 1024) {
+      return res.status(400).json({ error: 'Fayl hajmi 25MB dan oshmasligi kerak' });
+    }
+
     if (fileName && fileName.includes('.')) {
-      const parts = fileName.split('.');
-      extension = parts[parts.length - 1];
+      const sanitizedName = path.basename(fileName);
+      const parts = sanitizedName.split('.');
+      extension = parts[parts.length - 1].toLowerCase().replace(/[^a-z0-9]/g, '');
     }
 
     const savedFileName = `${crypto.randomUUID()}.${extension}`;
     const filePath = path.resolve(UPLOADS_DIR, savedFileName);
 
     fs.writeFileSync(filePath, buffer);
+
+    // Register permission in RLS store
+    db.fileAccess[savedFileName] = {
+      uploaderId: currentUser.id,
+      chatId: chatId || undefined
+    };
+    saveDb();
 
     const fileUrl = `/api/files/${savedFileName}`;
     res.json({

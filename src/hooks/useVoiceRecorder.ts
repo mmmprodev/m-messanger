@@ -40,17 +40,28 @@ export function useVoiceRecorder() {
       source.connect(analyser);
       sourceRef.current = source;
 
-      // Try webm, then mp4, or fallback
-      let mimeType = 'audio/webm';
-      if (!MediaRecorder.isTypeSupported('audio/webm')) {
-        if (MediaRecorder.isTypeSupported('audio/mp4')) {
-          mimeType = 'audio/mp4';
-        } else if (MediaRecorder.isTypeSupported('audio/ogg')) {
-          mimeType = 'audio/ogg';
+      // Flexible MIME type detection across Chrome, Safari, Firefox, iOS, and Android
+      let options: MediaRecorderOptions = {};
+      const candidateTypes = [
+        'audio/webm;codecs=opus',
+        'audio/webm',
+        'audio/mp4',
+        'audio/aac',
+        'audio/ogg;codecs=opus',
+        'audio/ogg',
+        'audio/wav'
+      ];
+
+      if (typeof MediaRecorder.isTypeSupported === 'function') {
+        for (const t of candidateTypes) {
+          if (MediaRecorder.isTypeSupported(t)) {
+            options = { mimeType: t };
+            break;
+          }
         }
       }
 
-      const mediaRecorder = new MediaRecorder(stream, { mimeType });
+      const mediaRecorder = new MediaRecorder(stream, options);
       mediaRecorderRef.current = mediaRecorder;
 
       mediaRecorder.ondataavailable = (event) => {
@@ -123,15 +134,22 @@ export function useVoiceRecorder() {
       mediaRecorderRef.current.onstop = () => {
         const mimeType = mediaRecorderRef.current?.mimeType || 'audio/webm';
         const blob = new Blob(audioChunksRef.current, { type: mimeType });
-        const finalDuration = duration;
+        const finalDuration = Math.max(1, Math.round(duration));
         const finalWaveform = waveformSamplesRef.current.length > 0
           ? [...waveformSamplesRef.current]
-          : [20, 40, 60, 80, 50, 70, 90, 40, 60, 30, 80, 50];
+          : [25, 45, 70, 85, 60, 75, 90, 50, 65, 40, 80, 55, 35, 65, 80];
 
         cleanup();
         resolve({ blob, duration: finalDuration, waveform: finalWaveform });
       };
 
+      if (mediaRecorderRef.current.state === 'recording') {
+        try {
+          mediaRecorderRef.current.requestData();
+        } catch (e) {
+          // ignore
+        }
+      }
       mediaRecorderRef.current.stop();
     });
   }, [cleanup, duration]);
