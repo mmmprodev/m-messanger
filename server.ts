@@ -327,8 +327,26 @@ interface ExtWebSocket extends WebSocket {
   userId?: string;
 }
 
-const wss = new WebSocketServer({ server });
+const wss = new WebSocketServer({ noServer: true });
 const connectedClients = new Map<string, Set<ExtWebSocket>>(); // userId -> Set<ws>
+
+server.on('upgrade', (request, socket, head) => {
+  const url = request.url || '';
+  const pathname = url.split('?')[0];
+
+  // If request is from Vite HMR, let Vite handle it
+  const isVite = pathname.startsWith('/@') || pathname.includes('vite') || request.headers['sec-websocket-protocol'] === 'vite-hmr';
+  if (isVite) {
+    return;
+  }
+
+  // Handle messenger WebSocket connections on /ws or root /
+  if (pathname === '/ws' || pathname === '/') {
+    wss.handleUpgrade(request, socket, head, (ws) => {
+      wss.emit('connection', ws, request);
+    });
+  }
+});
 
 function sendToUser(userId: string, event: string, data: any) {
   const userSockets = connectedClients.get(userId);
@@ -1231,7 +1249,19 @@ async function startServer() {
   if (!isProduction) {
     const { createServer: createViteServer } = await import('vite');
     const vite = await createViteServer({
-      server: { middlewareMode: true },
+      server: {
+        middlewareMode: true,
+        watch: {
+          ignored: [
+            '**/data/**',
+            '**/data/**/*',
+            '**/uploads/**',
+            '**/*.tmp*',
+            '**/data/db.json',
+            '**/data/db.json.*'
+          ]
+        }
+      },
       appType: 'spa',
     });
     app.use(vite.middlewares);

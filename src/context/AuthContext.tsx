@@ -7,6 +7,7 @@ interface AuthContextType {
   user: User | null;
   token: string | null;
   isAuthenticated: boolean;
+  isInitialLoading: boolean;
   isLoading: boolean;
   login: (username: string, password: string) => Promise<void>;
   register: (data: { username: string; displayName: string; password: string; avatarColor?: string; bio?: string }) => Promise<void>;
@@ -20,7 +21,8 @@ const AuthContext = createContext<AuthContextType | undefined>(undefined);
 export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   const [user, setUser] = useState<User | null>(null);
   const [token, setToken] = useState<string | null>(getAuthToken());
-  const [isLoading, setIsLoading] = useState<boolean>(true);
+  const [isInitialLoading, setIsInitialLoading] = useState<boolean>(true);
+  const [isLoading, setIsLoading] = useState<boolean>(false);
 
   useEffect(() => {
     async function initAuth() {
@@ -37,7 +39,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
           setUser(null);
         }
       }
-      setIsLoading(false);
+      setIsInitialLoading(false);
     }
     initAuth();
   }, []);
@@ -99,6 +101,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         user,
         token,
         isAuthenticated: !!user,
+        isInitialLoading,
         isLoading,
         login,
         register,

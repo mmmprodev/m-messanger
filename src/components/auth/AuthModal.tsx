@@ -240,29 +240,37 @@ export const AuthModal: React.FC = () => {
 
           <div className="grid grid-cols-2 gap-2 text-xs">
             <button
+              type="button"
+              disabled={isLoading}
               onClick={() => handleQuickDemo('durov')}
-              className="px-3 py-2 bg-violet-950/40 hover:bg-violet-900/40 border border-violet-500/20 rounded-xl text-left transition-colors"
+              className="px-3 py-2 bg-violet-950/40 hover:bg-violet-900/40 border border-violet-500/20 rounded-xl text-left transition-colors disabled:opacity-50"
             >
               <div className="font-bold text-white truncate">Pavel Durov</div>
               <div className="text-[11px] text-violet-400">@durov</div>
             </button>
             <button
+              type="button"
+              disabled={isLoading}
               onClick={() => handleQuickDemo('alisher_dev')}
-              className="px-3 py-2 bg-violet-950/40 hover:bg-violet-900/40 border border-violet-500/20 rounded-xl text-left transition-colors"
+              className="px-3 py-2 bg-violet-950/40 hover:bg-violet-900/40 border border-violet-500/20 rounded-xl text-left transition-colors disabled:opacity-50"
             >
               <div className="font-bold text-white truncate">Alisher Qodirov</div>
               <div className="text-[11px] text-violet-400">@alisher_dev</div>
             </button>
             <button
+              type="button"
+              disabled={isLoading}
               onClick={() => handleQuickDemo('dildora_art')}
-              className="px-3 py-2 bg-violet-950/40 hover:bg-violet-900/40 border border-violet-500/20 rounded-xl text-left transition-colors"
+              className="px-3 py-2 bg-violet-950/40 hover:bg-violet-900/40 border border-violet-500/20 rounded-xl text-left transition-colors disabled:opacity-50"
             >
               <div className="font-bold text-white truncate">Dildora K.</div>
               <div className="text-[11px] text-violet-400">@dildora_art</div>
             </button>
             <button
+              type="button"
+              disabled={isLoading}
               onClick={handleGuestQuick}
-              className="px-3 py-2 bg-gradient-to-r from-violet-600/25 to-fuchsia-600/25 hover:from-violet-600/35 hover:to-fuchsia-600/35 border border-fuchsia-500/35 rounded-xl text-left transition-all text-fuchsia-200"
+              className="px-3 py-2 bg-gradient-to-r from-violet-600/25 to-fuchsia-600/25 hover:from-violet-600/35 hover:to-fuchsia-600/35 border border-fuchsia-500/35 rounded-xl text-left transition-all text-fuchsia-200 disabled:opacity-50"
             >
               <div className="font-bold truncate">⚡ Yangi Mehmon</div>
               <div className="text-[11px] text-fuchsia-300/80">1 soniyada kirish</div>

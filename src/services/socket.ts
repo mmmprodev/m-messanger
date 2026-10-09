@@ -38,7 +38,7 @@ class RealtimeSocket {
     try {
       const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
       const host = window.location.host;
-      const wsUrl = `${protocol}//${host}`;
+      const wsUrl = `${protocol}//${host}/ws`;
 
       this.ws = new WebSocket(wsUrl);
 

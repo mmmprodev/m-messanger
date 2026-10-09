@@ -12,7 +12,7 @@ import { MediaLightbox } from './components/modals/MediaLightbox';
 import { CallModal } from './components/modals/CallModal';
 
 function MessengerApp() {
-  const { isAuthenticated, isLoading, user } = useAuth();
+  const { isAuthenticated, isInitialLoading, user } = useAuth();
   const { activeChat, setActiveChatId } = useChat();
 
   const [isMenuOpen, setIsMenuOpen] = useState(false);
@@ -31,7 +31,7 @@ function MessengerApp() {
     setIsDarkMode(prev => !prev);
   };
 
-  if (isLoading) {
+  if (isInitialLoading) {
     return (
       <div className="w-screen h-screen bg-[#0e1621] flex flex-col items-center justify-center text-white select-none">
         <div className="w-16 h-16 rounded-2xl bg-gradient-to-tr from-violet-600 to-fuchsia-500 flex items-center justify-center animate-pulse mb-4 shadow-lg shadow-violet-600/30">
